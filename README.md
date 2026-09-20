@@ -106,7 +106,14 @@ The frontend application strictly enforces 5 core engineering rules to maintain 
 ```
 frontend/
 ├── docs/
-│   └── API_CONTRACT.md         # Full REST API payload & response specification
+│   ├── README.md               # Documentation hub index
+│   ├── API_CONTRACT.md         # Full REST API payload & response specification
+│   ├── PRD.md                  # Product Requirements Document
+│   ├── TRD.md                  # Technical Requirements Document
+│   ├── APP_FLOW.md             # Navigation & Application Logic journeys
+│   ├── UI_UX_DESIGN_BRIEF.md   # Design tokens & accessibility standards
+│   ├── BACKEND_SCHEMA.md       # Database blueprint & schema models
+│   └── IMPLEMENTATION_PLAN.md  # Phased implementation roadmap
 ├── drizzle.config.json         # Drizzle ORM configuration for local development
 ├── eslint.config.mjs           # ESLint rules and Next.js preset configuration
 ├── next.config.ts              # Next.js configuration & environment settings
