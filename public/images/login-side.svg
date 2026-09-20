@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Career planning workspace</title>
+  <desc id="desc">Abstract desk scene with a career plan, progress bars and a warm desk lamp.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#122536"/>
+      <stop offset="1" stop-color="#6f4e43"/>
+    </linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="20" stdDeviation="20" flood-color="#07131e" flood-opacity=".45"/></filter>
+  </defs>
+  <rect width="1200" height="1000" fill="url(#bg)"/>
+  <circle cx="960" cy="140" r="250" fill="#d3a16e" opacity=".28"/>
+  <path d="M0 760C260 650 410 850 650 730S980 620 1200 760V1000H0Z" fill="#8f6655" opacity=".72"/>
+  <g transform="translate(150 180) rotate(-7 390 300)" filter="url(#shadow)">
+    <rect width="780" height="600" rx="18" fill="#fffaf0"/>
+    <rect x="58" y="58" width="260" height="20" rx="10" fill="#172b3b"/>
+    <rect x="58" y="102" width="170" height="12" rx="6" fill="#bd8b69"/>
+    <rect x="58" y="175" width="664" height="2" fill="#dfd2c1"/>
+    <text x="58" y="245" fill="#172b3b" font-family="sans-serif" font-size="22" letter-spacing="3">YOUR NEXT CHAPTER</text>
+    <text x="58" y="310" fill="#172b3b" font-family="serif" font-size="58" font-weight="700">Build with intent.</text>
+    <g transform="translate(58 380)">
+      <rect width="664" height="34" rx="17" fill="#e5ded4"/>
+      <rect width="470" height="34" rx="17" fill="#d5a36f"/>
+      <rect y="78" width="664" height="34" rx="17" fill="#e5ded4"/>
+      <rect y="78" width="380" height="34" rx="17" fill="#5b7a7d"/>
+    </g>
+  </g>
+  <path d="M1000 670v-330" stroke="#d5a36f" stroke-width="18" stroke-linecap="round"/>
+  <path d="M1000 340l-120 110h240z" fill="#d5a36f"/>
+  <ellipse cx="1000" cy="682" rx="180" ry="30" fill="#201f27" opacity=".35"/>
+</svg>
