@@ -6,13 +6,13 @@ A high-performance, modern career development and placement preparation platform
 
 ## 📑 Documentation Quick Links
 
-Common project specifications live in the root [`/docs`](../docs) folder:
-- 📄 **[Product Requirements Document (PRD)](../docs/PRD.md)**
-- 🛠️ **[Technical Requirements Document (TRD)](../docs/TRD.md)**
-- 🧭 **[App Flow & Navigation Logic](../docs/APP_FLOW.md)**
-- 🎨 **[UI/UX Design Brief](../docs/UI_UX_DESIGN_BRIEF.md)**
-- 🗄️ **[Backend Schema Blueprint](../docs/BACKEND_SCHEMA.md)**
-- 🚀 **[Phased Implementation Plan](../docs/IMPLEMENTATION_PLAN.md)**
+- 📜 **[API Contract Specification](./docs/API_CONTRACT.md)** — Frontend REST API Request & Response payload contract schemas.
+- 📄 **[Product Requirements Document (PRD)](../docs/PRD.md)** — Core product pitch, target audience, MVP features & non-goals.
+- 🛠️ **[Technical Requirements Document (TRD)](../docs/TRD.md)** — Technical stack rules, AI pipeline, caching, and CI/CD.
+- 🧭 **[App Flow & Navigation Logic](../docs/APP_FLOW.md)** — Navigation journeys, user flows, and edge-case matrix.
+- 🎨 **[UI/UX Design Brief](../docs/UI_UX_DESIGN_BRIEF.md)** — Design tokens, 8pt spacing grid, typography, and accessibility rules.
+- 🗄️ **[Backend Schema Blueprint](../docs/BACKEND_SCHEMA.md)** — Database models, entity relationships, and indexes.
+- 🚀 **[Phased Implementation Plan](../docs/IMPLEMENTATION_PLAN.md)** — 15-phase implementation roadmap and execution rules.
 
 ---
 
@@ -44,12 +44,12 @@ The frontend application strictly enforces 5 core engineering rules to maintain 
                      ▼ (Server State)                                      ▼ (Ephemeral UI State)
        ┌───────────────────────────┐                         ┌───────────────────────────┐
        │   TanStack Query Hook     │                         │   Zustand Store           │
-       │   (useQuery / useMutation)│                         │   (src/store/ui.ts)       │
+       │   (useQuery / useMutation)│                         │   ([src/store/ui.ts](./src/store/ui.ts))│
        └─────────────┬─────────────┘                         └───────────────────────────┘
                      │
                      ▼ HTTP / REST (Axios)
        ┌───────────────────────────┐
-       │     src/lib/api.ts        │
+       │     [src/lib/api.ts](./src/lib/api.ts)       │
        └─────────────┬─────────────┘
                      │ Interceptor catches 401 --> emits 'ct:session-expired'
                      ▼
@@ -67,14 +67,14 @@ The frontend application strictly enforces 5 core engineering rules to maintain 
 
 ### 🎯 The 5 Core Architecture Rules
 
-1. **Zero Direct DB Access from Components**: UI components never touch database layers or ORMs directly. All data operations are requested via `/api/v1/*` using versioned endpoints.
-2. **Feature-First Component Organization**: Code is structured into dedicated modular directories under `src/components/`:
-   - `components/layout/` — App shell, site header, page headers, navigation footers.
-   - `components/charts/` — Readiness score rings, skill bar distributions, analytics graphs.
-   - `components/brand/` — Logos, identity icons, brand tokens.
-   - `components/ui/` — Atomic UI primitives (buttons, badges, feedback state cards).
-   - `components/shared/` — Motion wrappers, theme toggles, modal dialogs.
-3. **Strict State Segregation**: Server state is exclusively managed by **TanStack Query** (caching, revalidation, optimistic updates). **Zustand** is reserved strictly for client-side ephemeral UI state (sidebar drawer toggle, active theme, onboarding wizard step).
+1. **Zero Direct DB Access from Components**: UI components never touch database layers or ORMs directly. All data operations are requested via `/api/v1/*` using versioned endpoints specified in [`docs/API_CONTRACT.md`](./docs/API_CONTRACT.md).
+2. **Feature-First Component Organization**: Code is structured into dedicated modular directories under [`src/components/`](./src/components):
+   - [`src/components/layout/`](./src/components/layout) — App shell, site header, page headers, navigation footers.
+   - [`src/components/charts/`](./src/components/charts) — Readiness score rings, skill bar distributions, analytics graphs.
+   - [`src/components/brand/`](./src/components/brand) — Logos, identity icons, brand tokens.
+   - [`src/components/ui/`](./src/components/ui) — Atomic UI primitives (buttons, badges, feedback state cards).
+   - [`src/components/shared/`](./src/components/shared) — Motion wrappers, theme toggles, modal dialogs.
+3. **Strict State Segregation**: Server state is exclusively managed by **TanStack Query** (caching, revalidation, optimistic updates). **Zustand** is reserved strictly for client-side ephemeral UI state ([`src/store/ui.ts`](./src/store/ui.ts)).
 4. **Comprehensive UX State Standard**: Every screen and widget implements 3 non-negotiable UX states:
    - **Skeleton Loading**: Accessible layout pulse placeholders while data fetches.
    - **Informative Empty State**: Explains *what is missing → why it matters → clear action button to get started*.
@@ -157,16 +157,16 @@ frontend/
 
 ## 💻 Application Pages & Features
 
-- 🏠 **Dashboard (`/dashboard`)**: The placement control center. Displays overall placement readiness score (0-100), current daily streak, active career target, top skill gaps, and quick-action links.
-- 🎯 **Career Onboarding (`/onboarding`)**: Interactive multi-step setup wizard where students select target roles (e.g., *Full Stack Developer*, *AI Engineer*), target companies, daily study availability, and graduation timeline.
-- 🗺️ **Learning Roadmap (`/roadmap`)**: Sequential, phase-by-phase curriculum customized to the user's career goals with progress indicators, hour estimates, and task completion toggles.
-- ⚡ **Skill Matrix (`/skills`)**: Detailed breakdown of technical competencies, comparing current user levels against required target benchmarks, with practice logging and delta tracking.
-- 📄 **ATS Resume Audit (`/resume`)**: Automated resume health analyzer that calculates ATS compatibility scores, keyword coverage, impact metrics, and actionable repair findings.
-- 📁 **Project Portfolio (`/projects`)**: Showcase manager for personal projects with tech stack tags, live demo links, GitHub repository URLs, and readiness score impact calculation.
-- 💼 **Job Application Pipeline (`/applications`)**: Application tracking system to manage job status workflows across stages (*Saved, Applied, Screening, Interview, Offer, Rejected*).
-- 🤖 **AI Career Coach (`/assistant`)**: Real-time AI chat interface offering tailored advice grounded in the user's actual skills, task progress, and readiness score.
-- 🎤 **Interview Preparation (`/interviews`)**: Question banks and mock interview practice drills.
-- 📈 **Progress Analytics (`/progress`)**: Historical charts tracking skill growth over time and placement readiness trajectories.
+- 🏠 **Dashboard ([`src/app/dashboard/page.tsx`](./src/app/dashboard/page.tsx))**: Placement control center displaying overall readiness score (0-100), streak, target role, and top skill gaps.
+- 🎯 **Career Onboarding ([`src/app/onboarding/page.tsx`](./src/app/onboarding/page.tsx))**: Multi-step setup wizard for selecting target role, target company, study availability, and timeline.
+- 🗺️ **Learning Roadmap ([`src/app/roadmap/page.tsx`](./src/app/roadmap/page.tsx))**: Phase-by-phase learning curriculum customized to career goals with progress indicators.
+- ⚡ **Skill Matrix ([`src/app/skills/page.tsx`](./src/app/skills/page.tsx))**: Technical competency matrix comparing current levels vs required target levels.
+- 📄 **ATS Resume Audit ([`src/app/resume/page.tsx`](./src/app/resume/page.tsx))**: Resume health analyzer with ATS score, keyword coverage, and repair findings.
+- 📁 **Project Portfolio ([`src/app/projects/page.tsx`](./src/app/projects/page.tsx))**: Personal project showcase manager with tech tags, live links, and GitHub URLs.
+- 💼 **Job Application Pipeline ([`src/app/applications/page.tsx`](./src/app/applications/page.tsx))**: Job application tracker across pipeline stages (*Saved, Applied, Interview, Offer*).
+- 🤖 **AI Career Coach ([`src/app/assistant/page.tsx`](./src/app/assistant/page.tsx))**: Interactive AI chat interface grounded in actual student metrics.
+- 🎤 **Interview Prep ([`src/app/interviews/page.tsx`](./src/app/interviews/page.tsx))**: Question banks and mock interview drills.
+- 📈 **Progress Analytics ([`src/app/progress/page.tsx`](./src/app/progress/page.tsx))**: Placement readiness trajectory and skill growth graphs.
 
 For complete UI/UX Design System rules, see **[UI_UX_DESIGN_BRIEF.md](../docs/UI_UX_DESIGN_BRIEF.md)** and navigation journeys in **[APP_FLOW.md](../docs/APP_FLOW.md)**.
 
@@ -180,13 +180,13 @@ Server-side data (user profile, skill matrix, roadmap tasks, applications) is qu
 - **Optimistic UI Updates**: Application status toggles update immediately on the UI before backend confirmation, reverting gracefully on network errors.
 
 ### Client UI State (Zustand)
-Ephemeral state that does not need database persistence is handled in `src/store/ui.ts`:
+Ephemeral state that does not need database persistence is handled in [`src/store/ui.ts`](./src/store/ui.ts):
 - Mobile sidebar navigation toggle state.
 - Dark / Light / System theme preference.
 - Unsaved draft forms during onboarding.
 
 ### Session Lifecycle Management
-The centralized Axios client in `src/lib/api.ts` listens to HTTP responses:
+The centralized Axios client in [`src/lib/api.ts`](./src/lib/api.ts) listens to HTTP responses:
 ```ts
 api.interceptors.response.use(
   (response) => response,
@@ -210,7 +210,7 @@ The application uses **Tailwind CSS v4** configured with customized CareerTracke
 
 - **Color Palette**: Professional deep dark backgrounds with crisp dark-mode support, high-contrast text, vibrant indigo/violet brand accents, and status-specific indicators (*Emerald* for shipped/completed, *Amber* for in-progress, *Rose* for critical gaps).
 - **Typography**: Clean sans-serif primary typography combined with `font-mono` tabular numbers (`tnum`) for scores and performance statistics.
-- **Motion Primitives**: Framer Motion primitives wrapped in `src/components/shared/motion.tsx` respect the browser's global `prefers-reduced-motion` setting.
+- **Motion Primitives**: Framer Motion primitives wrapped in [`src/components/shared/motion.tsx`](./src/components/shared/motion.tsx) respect the browser's global `prefers-reduced-motion` setting.
 
 ---
 
