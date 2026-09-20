@@ -6,13 +6,14 @@ A high-performance, modern career development and placement preparation platform
 
 ## 📑 Documentation Quick Links
 
+Project specifications live in the local [`/docs`](./docs) folder:
 - 📜 **[API Contract Specification](./docs/API_CONTRACT.md)** — Frontend REST API Request & Response payload contract schemas.
-- 📄 **[Product Requirements Document (PRD)](../docs/PRD.md)** — Core product pitch, target audience, MVP features & non-goals.
-- 🛠️ **[Technical Requirements Document (TRD)](../docs/TRD.md)** — Technical stack rules, AI pipeline, caching, and CI/CD.
-- 🧭 **[App Flow & Navigation Logic](../docs/APP_FLOW.md)** — Navigation journeys, user flows, and edge-case matrix.
-- 🎨 **[UI/UX Design Brief](../docs/UI_UX_DESIGN_BRIEF.md)** — Design tokens, 8pt spacing grid, typography, and accessibility rules.
-- 🗄️ **[Backend Schema Blueprint](../docs/BACKEND_SCHEMA.md)** — Database models, entity relationships, and indexes.
-- 🚀 **[Phased Implementation Plan](../docs/IMPLEMENTATION_PLAN.md)** — 15-phase implementation roadmap and execution rules.
+- 📄 **[Product Requirements Document (PRD)](./docs/PRD.md)** — Core product pitch, target audience, MVP features & non-goals.
+- 🛠️ **[Technical Requirements Document (TRD)](./docs/TRD.md)** — Technical stack rules, AI pipeline, caching, and CI/CD.
+- 🧭 **[App Flow & Navigation Logic](./docs/APP_FLOW.md)** — Navigation journeys, user flows, and edge-case matrix.
+- 🎨 **[UI/UX Design Brief](./docs/UI_UX_DESIGN_BRIEF.md)** — Design tokens, 8pt spacing grid, typography, and accessibility rules.
+- 🗄️ **[Backend Schema Blueprint](./docs/BACKEND_SCHEMA.md)** — Database models, entity relationships, and indexes.
+- 🚀 **[Phased Implementation Plan](./docs/IMPLEMENTATION_PLAN.md)** — 15-phase implementation roadmap and execution rules.
 
 ---
 
@@ -168,7 +169,7 @@ frontend/
 - 🎤 **Interview Prep ([`src/app/interviews/page.tsx`](./src/app/interviews/page.tsx))**: Question banks and mock interview drills.
 - 📈 **Progress Analytics ([`src/app/progress/page.tsx`](./src/app/progress/page.tsx))**: Placement readiness trajectory and skill growth graphs.
 
-For complete UI/UX Design System rules, see **[UI_UX_DESIGN_BRIEF.md](../docs/UI_UX_DESIGN_BRIEF.md)** and navigation journeys in **[APP_FLOW.md](../docs/APP_FLOW.md)**.
+For complete UI/UX Design System rules, see **[UI_UX_DESIGN_BRIEF.md](./docs/UI_UX_DESIGN_BRIEF.md)** and navigation journeys in **[APP_FLOW.md](./docs/APP_FLOW.md)**.
 
 ---
 
