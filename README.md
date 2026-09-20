@@ -28,6 +28,7 @@ Project specifications live in the local [`/docs`](./docs) folder:
 - [Environment Configuration](#-environment-configuration)
 - [Getting Started & Local Setup](#-getting-started--local-setup)
 - [Available Scripts](#-available-scripts)
+- [Empowering Student Careers](#-empowering-student-careers)
 
 ---
 
@@ -287,3 +288,11 @@ cp .env.example .env
 | `npm run start` | Starts Next.js production server |
 | `npm run lint` | Runs ESLint check across all TSX components and utility files |
 | `npm run typecheck` | Runs `tsc --noEmit` to verify type safety across the entire application |
+
+---
+
+## 🎓 Empowering Student Career Readiness
+
+> **Track Skills. Build Your Career. Get Hired.**
+> 
+> CareerTracker is purpose-built to bridge the gap between academic education and real-world placement readiness. By combining real-time skill intelligence, automated ATS resume scoring, personalized learning roadmaps, and contextual AI coaching, CareerTracker empowers every student to navigate their placement journey with clarity, confidence, and measurable career success.
