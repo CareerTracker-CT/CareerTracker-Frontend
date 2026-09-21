@@ -1,4 +1,4 @@
-# 🎨 CareerTracker Frontend Web Application
+# 🎨 CareerTracker Frontend Web Application 
 
 A high-performance, modern career development and placement preparation platform built with **Next.js 16 (App Router)**, **React 19**, **TypeScript**, **Tailwind CSS v4**, **TanStack Query**, and **Zustand**. Designed for maximum accessibility, smooth motion transitions, responsive layout controls, and real-time placement tracking.
 
@@ -67,7 +67,7 @@ The frontend application strictly enforces 5 core engineering rules to maintain 
 └──────────────────┘               └──────────────────┘
 ```
 
-### 🎯 The 5 Core Architecture Rules
+### 🎯 The 5 Core Architecture Rules:-)
 
 1. **Zero Direct DB Access from Components**: UI components never touch database layers or ORMs directly. All data operations are requested via `/api/v1/*` using versioned endpoints specified in [`docs/API_CONTRACT.md`](./docs/API_CONTRACT.md).
 2. **Feature-First Component Organization**: Code is structured into dedicated modular directories under [`src/components/`](./src/components):
