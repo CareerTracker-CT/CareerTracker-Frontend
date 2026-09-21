@@ -11,7 +11,7 @@ import {
   Layers,
   Sparkles,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { MetricCell, PageHeader } from "@/components/layout/page-header";
 import { LedgerBar } from "@/components/charts/skill-bar";
@@ -24,6 +24,10 @@ import { cn, daysUntil, formatDate } from "@/lib/utils";
 export default function RoadmapPage() {
   const { data, isLoading, isError, refetch } = useRoadmap();
   const [expanded, setExpanded] = useState<number | null>(2);
+  const [now, setNow] = useState<number | null>(null);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setNow(Date.now()), []);
 
   const tasks = data ?? [];
   const phases = Array.from(new Set(tasks.map((t) => t.phase))).sort((a, b) => a - b);
@@ -37,8 +41,8 @@ export default function RoadmapPage() {
       (a, b) => new Date(a.deadline as string).getTime() - new Date(b.deadline as string).getTime(),
     )[0];
 
-  const nextDueDays = nextDueTask?.deadline
-    ? Math.round((new Date(nextDueTask.deadline).getTime() - Date.now()) / 86_400_000)
+  const nextDueDays = nextDueTask?.deadline && now !== null
+    ? Math.round((new Date(nextDueTask.deadline).getTime() - now) / 86_400_000)
     : null;
   const overall = tasks.length
     ? Math.round(tasks.reduce((a, t) => a + t.progress, 0) / tasks.length)

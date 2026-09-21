@@ -92,11 +92,22 @@ export default function LoginPage() {
   const onSubmit = async (values: LoginForm) => {
     setFormError(null);
     try {
-      await fetch("/api/v1/auth/login", {
+      const response = await fetch("/api/v1/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
       });
+
+      if (!response.ok) {
+        throw new Error("Failed to sign in");
+      }
+
+      const payload = await response.json();
+      
+      if (payload.success && payload.data?.accessToken) {
+        window.localStorage.setItem("ct_access_token", payload.data.accessToken);
+      }
+
       router.push("/dashboard");
     } catch {
       setFormError(

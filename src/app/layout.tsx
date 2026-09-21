@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
-import Script from "next/script";
 import type { ReactNode } from "react";
 import { Providers } from "@/components/providers";
 import "./globals.css";
@@ -50,9 +49,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       suppressHydrationWarning
     >
       <head>
-        <Script
+        <script
           id="theme-bootstrap"
-          strategy="beforeInteractive"
           // Set the theme before paint so there is no flash of the wrong surface.
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem('ct-theme');var m=window.matchMedia('(prefers-color-scheme: dark)').matches;if(t==='dark'||(!t&&m)){document.documentElement.classList.add('dark')}}catch(e){}})();`,

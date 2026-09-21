@@ -61,7 +61,7 @@ export default function AssistantPage() {
     setSending(true);
 
     const userMessage: ChatMessage = {
-      id: `u-${Date.now()}`,
+      id: crypto.randomUUID(),
       role: "user",
       content: message,
     };
@@ -81,7 +81,7 @@ export default function AssistantPage() {
       }
 
       const assistantMessage: ChatMessage = {
-        id: `a-${Date.now()}`,
+        id: crypto.randomUUID(),
         role: "assistant",
         content: payload.data.answer,
         groundedIn: payload.data.groundedIn,

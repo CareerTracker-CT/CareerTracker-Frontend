@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { InternalAxiosRequestConfig } from "axios";
 import type { ApiResponse } from "@/types";
 
 /**
@@ -9,7 +9,18 @@ import type { ApiResponse } from "@/types";
 export const api = axios.create({
   baseURL: "/api/v1",
   timeout: 20_000,
+  withCredentials: true,
   headers: { "Content-Type": "application/json" },
+});
+
+api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  if (typeof window !== "undefined") {
+    const token = window.localStorage.getItem("ct_access_token");
+    if (token) {
+      config.headers.set?.("Authorization", `Bearer ${token}`);
+    }
+  }
+  return config;
 });
 
 api.interceptors.response.use(
