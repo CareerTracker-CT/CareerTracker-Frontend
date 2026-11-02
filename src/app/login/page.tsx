@@ -12,6 +12,10 @@ import Image from "next/image";
 import { Wordmark } from "@/components/brand/logo";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { Button } from "@/components/ui/button";
+import {
+  signInWithFirebaseEmail,
+  signInWithFirebaseGoogle,
+} from "@/lib/firebase/client";
 
 const loginSchema = z.object({
   email: z.string().min(1, "Email is required.").email("Enter a valid email address."),
@@ -79,40 +83,74 @@ export default function LoginPage() {
     register,
     handleSubmit,
     formState: { errors, isSubmitting, isValid },
+    getValues,
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
     mode: "onBlur",
     defaultValues: {
-      email: "aarav.sharma@vitstudent.ac.in",
-      password: "CareerTracker#2026",
       rememberMe: true,
     },
   });
 
+  const exchangeFirebaseToken = async (idToken: string, rememberMe: boolean) => {
+    const response = await fetch("/api/v1/auth/firebase", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken, rememberMe }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to sign in");
+    }
+
+    const payload = await response.json();
+
+    if (!payload.success || !payload.data?.accessToken) {
+      throw new Error("Failed to establish a session");
+    }
+
+    window.localStorage.setItem("ct_access_token", payload.data.accessToken);
+    router.push("/dashboard");
+  };
+
   const onSubmit = async (values: LoginForm) => {
     setFormError(null);
     try {
-      const response = await fetch("/api/v1/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to sign in");
-      }
-
-      const payload = await response.json();
-      
-      if (payload.success && payload.data?.accessToken) {
-        window.localStorage.setItem("ct_access_token", payload.data.accessToken);
-      }
-
-      router.push("/dashboard");
+      // Firebase proves the user's identity for the login attempt only. The
+      // backend then verifies the ID token and issues the same application
+      // session as before, so the rest of the flow is unchanged.
+      const idToken = await signInWithFirebaseEmail(values.email, values.password);
+      await exchangeFirebaseToken(idToken, values.rememberMe ?? false);
     } catch {
       setFormError(
         "We couldn't sign you in right now. Please check your connection and try again.",
       );
+    }
+  };
+
+  const onGoogleSignIn = async () => {
+    setFormError(null);
+    try {
+      const idToken = await signInWithFirebaseGoogle();
+      await exchangeFirebaseToken(idToken, getValues("rememberMe") ?? false);
+    } catch (error) {
+      const code =
+        typeof error === "object" && error !== null && "code" in error
+          ? error.code
+          : undefined;
+
+      if (code === "auth/popup-closed-by-user") {
+        setFormError("Google sign-in was cancelled.");
+      } else if (
+        code === "auth/popup-blocked" ||
+        code === "auth/cancelled-popup-request"
+      ) {
+        setFormError("Google sign-in could not open. Please try again.");
+      } else {
+        setFormError(
+          "We couldn't sign you in right now. Please check your connection and try again.",
+        );
+      }
     }
   };
 
@@ -244,6 +282,7 @@ export default function LoginPage() {
             <div className="mt-8 grid grid-cols-2 gap-3">
               <button
                 type="button"
+                onClick={onGoogleSignIn}
                 className="btn-base h-[44px] rounded-[10px] border border-rule-strong bg-panel text-[13.5px] font-medium text-ink hover:border-navy hover:text-navy"
               >
                 <svg viewBox="0 0 24 24" className="h-[17px] w-[17px]" aria-hidden="true">

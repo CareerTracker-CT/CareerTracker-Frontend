@@ -3,6 +3,8 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { clamp } from "@/lib/utils";
 
+const normalizeCoordinate = (value: number) => Number(value.toFixed(6));
+
 /**
  * Hand-built SVG readiness ring.
  * Outer ring = overall readiness. Inner tick band = the six dimensions,
@@ -48,10 +50,10 @@ export function ReadinessRing({
           return (
             <line
               key={i}
-              x1={cx + Math.cos(angle) * inner}
-              y1={cy + Math.sin(angle) * inner}
-              x2={cx + Math.cos(angle) * outer}
-              y2={cy + Math.sin(angle) * outer}
+              x1={normalizeCoordinate(cx + Math.cos(angle) * inner)}
+              y1={normalizeCoordinate(cy + Math.sin(angle) * inner)}
+              x2={normalizeCoordinate(cx + Math.cos(angle) * outer)}
+              y2={normalizeCoordinate(cy + Math.sin(angle) * outer)}
               stroke="var(--rule)"
               strokeWidth={i % 5 === 0 ? 1.3 : 0.8}
             />
