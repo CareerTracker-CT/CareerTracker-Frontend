@@ -46,8 +46,10 @@ let refreshing: Promise<string | null> | null = null;
 
 /**
  * Exchange the httpOnly refresh cookie for a fresh access token.
- * Single-flight: every 401 gets awaited on the same in-flight rotation, since
- * the backend allows only one valid refresh token (jti) per user.
+ * Single-flight: every 401 gets awaited on the same in-flight rotation so two
+ * concurrent 401s cannot burn two refresh tokens. Rotation keeps this device's
+ * session row stable (the sid claim identifies it; revoking a device in
+ * Settings kills only that device's refresh cookie).
  */
 export function refreshSession(): Promise<string | null> {
   if (accessToken && Date.now() - lastRefreshAt < 5_000) {
@@ -142,6 +144,31 @@ export async function requestData<T>(path: string): Promise<T> {
 
 export async function requestPut<T>(path: string, body: unknown): Promise<T> {
   const { data } = await api.put<ApiResponse<T>>(path, body);
+  if (!data.success) {
+    throw new Error(data.error.message);
+  }
+  return data.data;
+}
+
+/** Same envelope contract for the other write verbs (CSRF is attached by the interceptor). */
+export async function requestPost<T>(path: string, body: unknown): Promise<T> {
+  const { data } = await api.post<ApiResponse<T>>(path, body);
+  if (!data.success) {
+    throw new Error(data.error.message);
+  }
+  return data.data;
+}
+
+export async function requestPatch<T>(path: string, body: unknown): Promise<T> {
+  const { data } = await api.patch<ApiResponse<T>>(path, body);
+  if (!data.success) {
+    throw new Error(data.error.message);
+  }
+  return data.data;
+}
+
+export async function requestDelete<T>(path: string): Promise<T> {
+  const { data } = await api.delete<ApiResponse<T>>(path);
   if (!data.success) {
     throw new Error(data.error.message);
   }

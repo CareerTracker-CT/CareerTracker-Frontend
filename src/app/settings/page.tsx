@@ -17,30 +17,105 @@ import {
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge, SectionLabel } from "@/components/ui/badge";
+import { SkeletonRows } from "@/components/ui/feedback";
+import { useAuth } from "@/lib/auth";
+import {
+  useRevokeSession,
+  useSessions,
+} from "@/hooks/use-api";
+import { describeError } from "@/lib/errors";
+import { relativeTime } from "@/lib/utils";
+import type { SessionRecord } from "@/types";
 import { useUIStore } from "@/store/ui";
 import { cn } from "@/lib/utils";
 
-const sessions = [
-  {
-    device: "MacBook Pro · Chrome",
-    location: "Vellore, Tamil Nadu",
-    lastActive: "Active now",
-    current: true,
-    icon: Laptop,
-  },
-  {
-    device: "iPhone 14 · Safari",
-    location: "Vellore, Tamil Nadu",
-    lastActive: "2 hours ago",
-    current: false,
-    icon: Smartphone,
-  },
-];
+/** The backend masks nothing in dev — loopback traffic means "this network". */
+function sessionLocation(ipAddress: string | null): string | null {
+  if (!ipAddress) return null;
+  return /^(127\.|::1)/.test(ipAddress) ? "This network" : ipAddress;
+}
+
+function deviceLabel(session: SessionRecord): string {
+  return session.device ?? "Unknown device";
+}
 
 export default function SettingsPage() {
   const { theme, setTheme } = useUIStore();
+  const { signOut } = useAuth();
   const [twoFactor, setTwoFactor] = useState(true);
   const [productEmails, setProductEmails] = useState(false);
+
+  const {
+    data: sessions,
+    isLoading: sessionsLoading,
+    isError: sessionsError,
+    refetch: refetchSessions,
+  } = useSessions();
+  const revokeSession = useRevokeSession();
+  const [sessionBanner, setSessionBanner] = useState<{
+    tone: "good" | "bad";
+    text: string;
+  } | null>(null);
+  const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
+  const [confirmSignOutAll, setConfirmSignOutAll] = useState(false);
+  const [revokingAll, setRevokingAll] = useState(false);
+
+  const showSessionBanner = (tone: "good" | "bad", text: string) => {
+    setSessionBanner({ tone, text });
+    window.setTimeout(() => setSessionBanner(null), 4000);
+  };
+
+  const onRevoke = async (session: SessionRecord) => {
+    try {
+      await revokeSession.mutateAsync(session.id);
+      setConfirmRevokeId(null);
+      showSessionBanner("good", `${deviceLabel(session)} has been signed out.`);
+    } catch (error) {
+      showSessionBanner(
+        "bad",
+        describeError(error, "We couldn't sign that device out. Try again in a moment."),
+      );
+    }
+  };
+
+  const otherSessions = (sessions ?? []).filter((session) => !session.isCurrent);
+
+  const onSignOutEverywhere = async () => {
+    if (otherSessions.length === 0) {
+      showSessionBanner(
+        "good",
+        "You're already signed in on this device only.",
+      );
+      setConfirmSignOutAll(false);
+      return;
+    }
+
+    setRevokingAll(true);
+    const results = await Promise.allSettled(
+      otherSessions.map((session) => revokeSession.mutateAsync(session.id)),
+    );
+    const revokedCount = results.filter((r) => r.status === "fulfilled").length;
+    const failedCount = results.length - revokedCount;
+    setRevokingAll(false);
+    setConfirmSignOutAll(false);
+
+    if (revokedCount > 0) {
+      showSessionBanner(
+        failedCount === 0 ? "good" : "bad",
+        failedCount === 0
+          ? `Signed out on ${revokedCount} device${revokedCount === 1 ? "" : "s"}. This device stays signed in.`
+          : `Signed out on ${revokedCount} device${revokedCount === 1 ? "" : "s"}. ${failedCount} couldn't be revoked.`,
+      );
+    } else {
+      showSessionBanner(
+        "bad",
+        describeError(
+          results[0].status === "rejected" ? results[0].reason : null,
+          "We couldn't sign the other devices out. Try again in a moment.",
+        ),
+      );
+    }
+  };
 
   return (
     <AppShell>
@@ -243,15 +318,34 @@ export default function SettingsPage() {
                   <div>
                     <p className="text-[11px] font-medium text-ink">Active sessions</p>
                     <p className="mt-1.5 text-[9px] text-warm">
-                      {sessions.length} devices currently signed in
+                      {sessionsLoading
+                        ? "Checking your devices…"
+                        : sessionsError
+                          ? "Couldn't reach your sessions right now"
+                          : `${sessions?.length ?? 0} device${(sessions?.length ?? 0) === 1 ? "" : "s"} currently signed in`}
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
-                  className="btn-base h-[34px] rounded-[9px] border border-bad/30 bg-bad-wash/50 px-3.5 text-[10px] font-medium text-bad hover:bg-bad-wash"
+                  onClick={() =>
+                    confirmSignOutAll
+                      ? void onSignOutEverywhere()
+                      : setConfirmSignOutAll(true)
+                  }
+                  disabled={revokingAll || sessionsLoading || sessionsError}
+                  className={cn(
+                    "btn-base h-[34px] rounded-[9px] border px-3.5 text-[10px] font-medium disabled:cursor-not-allowed disabled:opacity-60",
+                    confirmSignOutAll
+                      ? "border-bad bg-bad-wash text-bad"
+                      : "border-bad/30 bg-bad-wash/50 text-bad hover:bg-bad-wash",
+                  )}
                 >
-                  Sign out everywhere
+                  {revokingAll
+                    ? "Signing out…"
+                    : confirmSignOutAll
+                      ? `Confirm (${otherSessions.length} other)`
+                      : "Sign out everywhere"}
                 </button>
               </div>
             </div>
@@ -259,36 +353,137 @@ export default function SettingsPage() {
             {/* Sessions */}
             <div className="border-t border-rule px-7 py-6">
               <p className="label-caps mb-4">Signed-in devices</p>
-              <div className="space-y-2.5">
-                {sessions.map((session) => (
-                  <div
-                    key={session.device}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-rule px-4 py-3.5"
-                  >
-                    <div className="flex items-center gap-3">
-                      <session.icon className="h-[14px] w-[14px] text-warm" aria-hidden="true" />
-                      <div>
-                        <p className="text-[10px] font-medium text-ink">{session.device}</p>
-                        <p className="mt-1 text-[8.5px] text-warm">
-                          {session.location} · {session.lastActive}
-                        </p>
-                      </div>
-                    </div>
-                    {session.current ? (
-                      <Badge tone="good" className="px-2.5 py-1 text-[8px]">
-                        This device
-                      </Badge>
-                    ) : (
-                      <button
-                        type="button"
-                        className="text-[9px] font-medium text-bad underline-offset-4 hover:underline"
-                      >
-                        Revoke
-                      </button>
+
+              {sessionBanner && (
+                <div
+                  role={sessionBanner.tone === "good" ? "status" : "alert"}
+                  className={cn(
+                    "mb-4 flex items-center gap-3 rounded-[10px] border px-4 py-3",
+                    sessionBanner.tone === "good"
+                      ? "border-good/25 bg-good-wash"
+                      : "border-bad/25 bg-bad-wash",
+                  )}
+                >
+                  <CheckCircle2
+                    className={cn(
+                      "h-[13px] w-[13px] shrink-0",
+                      sessionBanner.tone === "good" ? "text-good" : "text-bad",
                     )}
-                  </div>
-                ))}
-              </div>
+                    aria-hidden="true"
+                  />
+                  <p
+                    className={cn(
+                      "text-[10.5px]",
+                      sessionBanner.tone === "good" ? "text-good" : "text-bad",
+                    )}
+                  >
+                    {sessionBanner.text}
+                  </p>
+                </div>
+              )}
+
+              {sessionsLoading ? (
+                <div className="space-y-2.5">
+                  <SkeletonRows rows={2} />
+                </div>
+              ) : sessionsError ? (
+                <div className="rounded-[10px] border border-rule px-4 py-3.5">
+                  <p className="text-[10.5px] text-warm">
+                    {"We couldn't load your signed-in devices."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => refetchSessions()}
+                    className="mt-2 text-[9.5px] font-semibold text-navy underline-offset-4 hover:underline"
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : (sessions ?? []).length === 0 ? (
+                <p className="text-[10px] text-warm">
+                  {"No active sessions found. You'll see this device listed here after signing in."}
+                </p>
+              ) : (
+                <div className="space-y-2.5">
+                  {(sessions ?? []).map((session) => {
+                    const DeviceIcon = session.deviceKind === "desktop" ? Laptop : Smartphone;
+                    const location = sessionLocation(session.ipAddress);
+                    const isRevoking = revokeSession.isPending && revokeSession.variables === session.id;
+                    const revoking = isRevoking || (revokingAll && !session.isCurrent);
+
+                    return (
+                      <div
+                        key={session.id}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-rule px-4 py-3.5"
+                      >
+                        <div className="flex items-center gap-3">
+                          <DeviceIcon
+                            className="h-[14px] w-[14px] text-warm"
+                            aria-hidden="true"
+                          />
+                          <div>
+                            <p className="text-[10px] font-medium text-ink">
+                              {deviceLabel(session)}
+                              {session.rememberMe && (
+                                <span className="ml-2 text-[8.5px] font-normal text-warm-2">
+                                  keep me signed in
+                                </span>
+                              )}
+                            </p>
+                            <p className="mt-1 text-[8.5px] text-warm">
+                              {[location, relativeTime(session.lastUsedAt)]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </p>
+                          </div>
+                        </div>
+
+                        {session.isCurrent ? (
+                          <div className="flex items-center gap-3">
+                            <Badge tone="good" className="px-2.5 py-1 text-[8px]">
+                              This device
+                            </Badge>
+                            <button
+                              type="button"
+                              onClick={() => void signOut()}
+                              className="text-[9px] font-medium text-ink underline-offset-4 hover:underline"
+                            >
+                              Sign out
+                            </button>
+                          </div>
+                        ) : confirmRevokeId === session.id ? (
+                          <div className="flex items-center gap-2.5">
+                            <button
+                              type="button"
+                              onClick={() => void onRevoke(session)}
+                              disabled={revoking}
+                              className="text-[9px] font-semibold text-bad underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {revoking ? "Signing out…" : "Confirm revoke"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmRevokeId(null)}
+                              className="text-[9px] font-medium text-warm underline-offset-4 hover:underline"
+                            >
+                              Keep
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmRevokeId(session.id)}
+                            disabled={revoking}
+                            className="text-[9px] font-medium text-bad underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {revoking ? "Signing out…" : "Revoke"}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </section>
 

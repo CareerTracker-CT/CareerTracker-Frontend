@@ -119,7 +119,7 @@ All API requests and responses utilize versioned JSON payloads under `/api/v1/*`
 #### `POST /api/v1/auth/logout`
 - **Auth**: optional. Accepts the `Authorization: Bearer` header, the `ct_access_token` cookie, or the
   `ct_refresh` cookie alone — so sign-out keeps working after the access token expires. Never fails
-  for an expired/malformed credential.
+  for an expired/malformed credential. Revokes **only the calling device's** session row.
 - **Response `200 OK`**: Clears both `ct_refresh` and `ct_access_token` cookies.
   ```json
   {
@@ -128,11 +128,62 @@ All API requests and responses utilize versioned JSON payloads under `/api/v1/*`
   }
   ```
 
+#### `GET /api/v1/auth/sessions`
+- **Auth**: required (Bearer or access cookie).
+- **Device detection**: the row whose refresh cookie `{ sid }` matches the presented `ct_refresh`
+  cookie is flagged `isCurrent`; without a cookie the access token's `sid` claim is used.
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "id": "f18a51c9-...",
+        "device": "Windows · Chrome 141",
+        "deviceKind": "desktop",
+        "ipAddress": "127.0.0.1",
+        "rememberMe": false,
+        "createdAt": "2026-11-04T09:20:00.000Z",
+        "lastUsedAt": "2026-11-04T09:41:12.000Z",
+        "expiresAt": "2026-11-11T09:20:00.000Z",
+        "isCurrent": true
+      }
+    ]
+  }
+  ```
+
+#### `DELETE /api/v1/auth/sessions/:id`
+- **Auth**: required; may only target your own sessions.
+- **Response `200 OK`** (unknown id or another user's id → `404 SESSION_NOT_FOUND`; revoking an
+  already-revoked session is idempotent):
+  ```json
+  {
+    "success": true,
+    "data": { "id": "f18a51c9-...", "status": "revoked" }
+  }
+  ```
+- **Effect**: the revoked device's refresh cookie is dead immediately (its next `refresh` returns
+  `401 SESSION_EXPIRED`); its *access token* remains valid until its own expiry (≤15 min).
+
+#### Multi-device rotation rules
+- Every login creates one `auth_sessions` row; refresh **rotation** keeps the same row (identity:
+  the `sid` claim) and only swaps `jti` + `lastUsedAt`, so concurrent devices never invalidate
+  each other. `expiresAt` is absolute — rotation never extends it.
+- Presenting a stale `jti` (replay) is rejected with `401`; if the last rotation happened more than
+  60 seconds ago the device row is **revoked outright** as an attack signal.
+- Registering a new device does **not** sign out any other device.
+- Each rotation re-stamps the row's device metadata (`device`, `deviceKind`, `ipAddress`) from the
+  current request's `User-Agent`/IP, so labels track the client actually using the session (emulation
+  toggles, browser updates, synced cookies). An unparseable UA (API clients) never overwrites a
+  known label.
+
 #### CSRF (`X-CSRF-Token`)
 - A non-httpOnly `ct_csrf` cookie is issued on browser-facing GET responses and login/refresh.
 - Every unsafe method (`POST`/`PUT`/`PATCH`/`DELETE`) **outside `/api/v1/auth/*`** must echo the
-  `ct_csrf` cookie value in the `X-CSRF-Token` header; missing or wrong values get `403 FORBIDDEN`.
-- `/auth/login`, `/auth/firebase`, `/auth/refresh`, `/auth/logout` are exempt.
+  `ct_csrf` cookie value in the `X-CSRF-Token` header; missing or wrong values get `403 CSRF_TOKEN_MISSING`.
+- The entire `/auth/*` prefix is exempt — `/auth/login`, `/auth/firebase`, `/auth/refresh`,
+  `/auth/logout`, `/auth/sessions` — the refresh cookie is same-site strict, so these requests
+  cannot be forged cross-origin.
 
 ---
 
@@ -160,7 +211,7 @@ All API requests and responses utilize versioned JSON payloads under `/api/v1/*`
   }
   ```
 
-#### `PATCH /api/v1/profile`
+#### `PUT /api/v1/profile`
 - **Request Body**: Partial update object matching profile schema.
 - **Response `200 OK`**: Updated profile object.
 

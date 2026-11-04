@@ -124,6 +124,21 @@ export interface RoadmapTask {
   skillTag: string | null;
 }
 
+/** One signed-in device row (GET /auth/sessions). */
+export type DeviceKind = "desktop" | "mobile" | "tablet";
+
+export interface SessionRecord {
+  id: string;
+  device: string | null;
+  deviceKind: DeviceKind;
+  ipAddress: string | null;
+  rememberMe: boolean;
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+  isCurrent: boolean;
+}
+
 export interface ProjectRecord {
   id: string;
   name: string;
