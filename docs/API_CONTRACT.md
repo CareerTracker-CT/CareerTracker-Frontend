@@ -117,13 +117,22 @@ All API requests and responses utilize versioned JSON payloads under `/api/v1/*`
   ```
 
 #### `POST /api/v1/auth/logout`
-- **Response `200 OK`**: Clears `ct_refresh` cookie.
+- **Auth**: optional. Accepts the `Authorization: Bearer` header, the `ct_access_token` cookie, or the
+  `ct_refresh` cookie alone — so sign-out keeps working after the access token expires. Never fails
+  for an expired/malformed credential.
+- **Response `200 OK`**: Clears both `ct_refresh` and `ct_access_token` cookies.
   ```json
   {
     "success": true,
     "data": { "status": "SIGNED_OUT" }
   }
   ```
+
+#### CSRF (`X-CSRF-Token`)
+- A non-httpOnly `ct_csrf` cookie is issued on browser-facing GET responses and login/refresh.
+- Every unsafe method (`POST`/`PUT`/`PATCH`/`DELETE`) **outside `/api/v1/auth/*`** must echo the
+  `ct_csrf` cookie value in the `X-CSRF-Token` header; missing or wrong values get `403 FORBIDDEN`.
+- `/auth/login`, `/auth/firebase`, `/auth/refresh`, `/auth/logout` are exempt.
 
 ---
 

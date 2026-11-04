@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import {
+  AlertTriangle,
   ArrowRight,
   CheckCircle2,
   GraduationCap,
@@ -16,7 +17,8 @@ import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionLabel } from "@/components/ui/badge";
 import { SkeletonRows } from "@/components/ui/feedback";
-import { useProfile } from "@/hooks/use-api";
+import { useProfile, useUpdateProfile } from "@/hooks/use-api";
+import { describeError } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 const profileSchema = z.object({
@@ -70,7 +72,9 @@ function Field({
 
 export default function ProfilePage() {
   const { data, isLoading } = useProfile();
+  const updateProfile = useUpdateProfile();
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const {
     register,
@@ -100,20 +104,70 @@ export default function ProfilePage() {
     },
   });
 
+  /**
+   * Mirror the saved account/profile values into the form whenever the query
+   * lands or refreshes (also after a save, keeping the form in sync with
+   * what the backend actually persisted). Demo defaults stay as fallbacks for
+   * fields the user has never filled in.
+   */
   useEffect(() => {
-    if (data?.user) {
-      reset((prev) => ({
-        ...prev,
-        fullName: data.user.fullName,
-        headline: data.user.headline ?? prev.headline,
-      }));
-    }
+    if (!data) return;
+    const { user, profile } = data;
+    reset((prev) => ({
+      ...prev,
+      fullName: user.fullName ?? prev.fullName,
+      headline: user.headline ?? prev.headline,
+      college: profile?.college ?? prev.college,
+      degree: profile?.degree ?? prev.degree,
+      branch: profile?.branch ?? prev.branch,
+      academicYear: profile?.academicYear ?? prev.academicYear,
+      semester: profile?.semester ?? prev.semester,
+      cgpa: profile?.cgpa ?? prev.cgpa,
+      targetRole: profile?.targetRole ?? prev.targetRole,
+      targetCompany: profile?.targetCompany ?? prev.targetCompany,
+      careerGoal: profile?.careerGoal ?? prev.careerGoal,
+      learningStyle: profile?.learningStyle ?? prev.learningStyle,
+      studyHoursPerDay: profile?.studyHoursPerDay ?? prev.studyHoursPerDay,
+      placementTimelineMonths:
+        profile?.placementTimelineMonths ?? prev.placementTimelineMonths,
+      summary: profile?.summary ?? prev.summary,
+    }));
   }, [data, reset]);
 
-  const onSubmit = async () => {
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 3200);
+  const onSubmit = async (values: ProfileForm) => {
+    // zodResolver hands over the schema's parsed output, but number inputs can
+    // still arrive as strings — coerce defensively for the DTO's IsNumber rules.
+    const payload = {
+      fullName: values.fullName.trim(),
+      headline: values.headline,
+      college: values.college.trim(),
+      degree: values.degree,
+      branch: values.branch,
+      academicYear: values.academicYear,
+      semester: Number(values.semester),
+      cgpa: Number(values.cgpa),
+      targetRole: values.targetRole.trim(),
+      targetCompany: values.targetCompany.trim(),
+      careerGoal: values.careerGoal.trim(),
+      learningStyle: values.learningStyle,
+      studyHoursPerDay: Number(values.studyHoursPerDay),
+      placementTimelineMonths: Number(values.placementTimelineMonths),
+      summary: values.summary.trim(),
+    };
+
+    try {
+      setSaveError(null);
+      await updateProfile.mutateAsync(payload);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 3200);
+    } catch (error) {
+      setSaveError(
+        describeError(
+          error,
+          "We couldn't save your changes. Check your connection and try again.",
+        ),
+      );
+    }
   };
 
   return (
@@ -173,6 +227,16 @@ export default function ProfilePage() {
           <p className="text-[11.5px] text-good">
             Profile updated. Your readiness score and roadmap recommendations have been recalculated.
           </p>
+        </div>
+      )}
+
+      {saveError && (
+        <div
+          role="alert"
+          className="mb-8 flex items-start gap-3 rounded-[11px] border border-bad/25 bg-bad-wash px-5 py-4"
+        >
+          <AlertTriangle className="mt-[1px] h-[16px] w-[16px] shrink-0 text-bad" aria-hidden="true" />
+          <p className="text-[11.5px] text-bad">{saveError}</p>
         </div>
       )}
 

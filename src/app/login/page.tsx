@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
@@ -16,6 +16,10 @@ import {
   signInWithFirebaseEmail,
   signInWithFirebaseGoogle,
 } from "@/lib/firebase/client";
+import { api } from "@/lib/api";
+import { describeError } from "@/lib/errors";
+import { useAuth } from "@/lib/auth";
+import type { ApiResponse } from "@/types";
 
 const loginSchema = z.object({
   email: z.string().min(1, "Email is required.").email("Enter a valid email address."),
@@ -76,8 +80,16 @@ function AmbientNodes() {
 export default function LoginPage() {
   const router = useRouter();
   const reduce = useReducedMotion();
+  const { status, signIn } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Already signed in? Skip the form.
+  useEffect(() => {
+    if (status === "authenticated") {
+      router.replace("/dashboard");
+    }
+  }, [status, router]);
 
   const {
     register,
@@ -93,23 +105,18 @@ export default function LoginPage() {
   });
 
   const exchangeFirebaseToken = async (idToken: string, rememberMe: boolean) => {
-    const response = await fetch("/api/v1/auth/firebase", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idToken, rememberMe }),
-    });
+    const { data } = await api.post<ApiResponse<{ accessToken: string }>>(
+      "/auth/firebase",
+      { idToken, rememberMe },
+    );
 
-    if (!response.ok) {
-      throw new Error("Failed to sign in");
-    }
-
-    const payload = await response.json();
-
-    if (!payload.success || !payload.data?.accessToken) {
+    if (!data.success || !data.data.accessToken) {
       throw new Error("Failed to establish a session");
     }
 
-    window.localStorage.setItem("ct_access_token", payload.data.accessToken);
+    // The token lives in memory; the httpOnly cookies set by this response are
+    // the persistent session. The profile is loaded in the background.
+    await signIn(data.data.accessToken);
     router.push("/dashboard");
   };
 
@@ -121,9 +128,12 @@ export default function LoginPage() {
       // session as before, so the rest of the flow is unchanged.
       const idToken = await signInWithFirebaseEmail(values.email, values.password);
       await exchangeFirebaseToken(idToken, values.rememberMe ?? false);
-    } catch {
+    } catch (error) {
       setFormError(
-        "We couldn't sign you in right now. Please check your connection and try again.",
+        describeError(
+          error,
+          "We couldn't sign you in. Check your credentials and try again.",
+        ),
       );
     }
   };
@@ -146,9 +156,14 @@ export default function LoginPage() {
         code === "auth/cancelled-popup-request"
       ) {
         setFormError("Google sign-in could not open. Please try again.");
+      } else if (code) {
+        setFormError("We couldn't sign you in. Check your credentials and try again.");
       } else {
         setFormError(
-          "We couldn't sign you in right now. Please check your connection and try again.",
+          describeError(
+            error,
+            "We couldn't sign you in. Check your credentials and try again.",
+          ),
         );
       }
     }

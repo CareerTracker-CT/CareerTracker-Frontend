@@ -1,7 +1,7 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { requestData } from "@/lib/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { requestData, requestPut } from "@/lib/api";
 import type {
   ApplicationRecord,
   DashboardPayload,
@@ -68,5 +68,22 @@ export function useProfile() {
   return useQuery({
     queryKey: ["profile"],
     queryFn: () => requestData<{ user: UserProfile; profile: CareerProfile | null }>("/profile"),
+  });
+}
+
+/**
+ * Persist profile edits with PUT /profile and fold the server-returned
+ * { user, profile } straight back into the cache. Dashboard goes stale since
+ * target-role/timeline changes recalculate readiness.
+ */
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Record<string, unknown>) =>
+      requestPut<{ user: UserProfile; profile: CareerProfile }>("/profile", payload),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["profile"], data);
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
   });
 }

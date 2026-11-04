@@ -12,6 +12,7 @@ import {
   GraduationCap,
   LayoutDashboard,
   LineChart,
+  LogOut,
   Menu,
   MessageSquare,
   PanelLeftClose,
@@ -27,6 +28,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Wordmark } from "@/components/brand/logo";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { useUIStore } from "@/store/ui";
+import { useAuth } from "@/lib/auth";
 import { useDashboard, useNotifications } from "@/hooks/use-api";
 import { cn, initials } from "@/lib/utils";
 
@@ -197,6 +199,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { mobileNavOpen, setMobileNavOpen, sidebarCollapsed, toggleSidebar } = useUIStore();
+  const { status, user, signOut } = useAuth();
   const { data: dashboard } = useDashboard();
   const { data: notifications } = useNotifications();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -205,7 +208,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setMobileNavOpen(false);
   }, [pathname, setMobileNavOpen]);
 
+  // Unauthenticated visitors are bounced to /login by <AuthProvider>; keep the
+  // shell unmounted meanwhile so no private chrome ever flashes on screen.
+  if (status === "unauthenticated") {
+    return null;
+  }
+
   const unread = notifications?.filter((n) => !n.readAt).length ?? 0;
+  const displayName = user?.fullName ?? dashboard?.user.fullName ?? "Student";
 
   return (
     <div className="min-h-screen bg-paper">
@@ -348,12 +358,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 aria-label="Your profile"
               >
                 <span className="flex h-[30px] w-[30px] items-center justify-center rounded-[7px] bg-navy text-[11px] font-semibold text-white">
-                  {initials(dashboard?.user.fullName ?? "Student")}
+                  {initials(displayName)}
                 </span>
                 <span className="hidden max-w-[110px] truncate text-[11.5px] font-medium text-ink lg:block">
-                  {dashboard?.user.fullName ?? "Student"}
+                  {displayName}
                 </span>
               </Link>
+
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] border border-rule bg-panel text-ink-soft transition-colors hover:border-bad hover:text-bad"
+                aria-label="Sign out"
+                title="Sign out"
+              >
+                <LogOut className="h-[16px] w-[16px]" aria-hidden="true" />
+              </button>
             </div>
           </div>
 
