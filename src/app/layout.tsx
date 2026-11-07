@@ -1,27 +1,7 @@
 import type { Metadata } from "next";
-import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 import { Providers } from "@/components/providers";
 import "./globals.css";
-
-const fraunces = Fraunces({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-fraunces",
-  axes: ["opsz", "SOFT", "WONK"],
-});
-
-const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-inter",
-});
-
-const jetbrains = JetBrains_Mono({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-jetbrains",
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://careertracker.app"),
@@ -43,11 +23,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${fraunces.variable} ${inter.variable} ${jetbrains.variable}`}
-      suppressHydrationWarning
-    >
+    <html lang="en" suppressHydrationWarning>
       <head>
         <script
           id="theme-bootstrap"

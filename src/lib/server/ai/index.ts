@@ -1,5 +1,4 @@
-import { getDashboard, getResumeRecords, getRoadmapTasks, getSkillRecords } from "@/lib/server/queries";
-import type { DashboardPayload, RoadmapTask, SkillRecord } from "@/types";
+import type { CareerContext } from "@/lib/server/ai-chat-security.mjs";
 
 /**
  * ---------------------------------------------------------------------------
@@ -83,30 +82,6 @@ export interface CareerAnswer {
   followUps: string[];
   /** True when the answer came from the deterministic engine rather than a model. */
   degraded: boolean;
-}
-
-interface CareerContext {
-  dashboard: DashboardPayload;
-  skills: SkillRecord[];
-  tasks: RoadmapTask[];
-  resumeSummary: string;
-}
-
-async function loadContext(): Promise<CareerContext> {
-  const [dashboard, skills, tasks, resumes] = await Promise.all([
-    getDashboard(),
-    getSkillRecords(),
-    getRoadmapTasks(),
-    getResumeRecords(),
-  ]);
-
-  const current = resumes.find((r) => r.isCurrent) ?? resumes[0];
-
-  const resumeSummary = current
-    ? `ATS score ${current.atsScore}/100, keyword coverage ${current.keywordCoverage}%, ${current.quantifiedImpactCount} quantified achievement(s), ${current.findings.filter((f) => f.severity === "HIGH").length} high-severity finding(s).`
-    : "No resume has been uploaded yet.";
-
-  return { dashboard, skills, tasks, resumeSummary };
 }
 
 function buildSystemPrompt(ctx: CareerContext): string {
@@ -255,8 +230,10 @@ function buildGroundedAnswer(message: string, ctx: CareerContext): CareerAnswer 
  * Always resolves — provider failures fall back to the grounded engine rather
  * than leaving the user without an answer.
  */
-export async function generateCareerAnswer(message: string): Promise<CareerAnswer> {
-  const ctx = await loadContext();
+export async function generateCareerAnswer(
+  message: string,
+  ctx: CareerContext,
+): Promise<CareerAnswer> {
   const provider = getActiveProvider();
 
   if (!provider) {
@@ -288,10 +265,11 @@ export async function generateCareerAnswer(message: string): Promise<CareerAnswe
       ],
       degraded: false,
     };
-  } catch (error) {
-    console.error("[ai] provider call failed, falling back to grounded engine", {
+  } catch {
+    // Provider exception messages can contain request details or remote text;
+    // keep logs to a stable provider identifier and never emit exception data.
+    console.error("[ai] provider call failed; using grounded fallback", {
       provider: provider.id,
-      message: error instanceof Error ? error.message : "unknown",
     });
     return buildGroundedAnswer(message, ctx);
   }

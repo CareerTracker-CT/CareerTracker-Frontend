@@ -106,9 +106,9 @@
   --color-bad: var(--bad);
   --color-bad-wash: var(--bad-wash);
 
-  --font-display: var(--font-fraunces), "Iowan Old Style", Georgia, serif;
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", monospace;
+  --font-display: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Consolas, monospace;
 
   --radius-input: 10px;
   --radius-card: 12px;

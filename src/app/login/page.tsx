@@ -17,7 +17,7 @@ import {
   signInWithFirebaseGoogle,
 } from "@/lib/firebase/client";
 import { api } from "@/lib/api";
-import { describeError } from "@/lib/errors";
+import { describeLoginError } from "@/lib/login-errors.mjs";
 import { useAuth } from "@/lib/auth";
 import type { ApiResponse } from "@/types";
 
@@ -129,12 +129,7 @@ export default function LoginPage() {
       const idToken = await signInWithFirebaseEmail(values.email, values.password);
       await exchangeFirebaseToken(idToken, values.rememberMe ?? false);
     } catch (error) {
-      setFormError(
-        describeError(
-          error,
-          "We couldn't sign you in. Check your credentials and try again.",
-        ),
-      );
+      setFormError(describeLoginError(error));
     }
   };
 
@@ -144,28 +139,7 @@ export default function LoginPage() {
       const idToken = await signInWithFirebaseGoogle();
       await exchangeFirebaseToken(idToken, getValues("rememberMe") ?? false);
     } catch (error) {
-      const code =
-        typeof error === "object" && error !== null && "code" in error
-          ? error.code
-          : undefined;
-
-      if (code === "auth/popup-closed-by-user") {
-        setFormError("Google sign-in was cancelled.");
-      } else if (
-        code === "auth/popup-blocked" ||
-        code === "auth/cancelled-popup-request"
-      ) {
-        setFormError("Google sign-in could not open. Please try again.");
-      } else if (code) {
-        setFormError("We couldn't sign you in. Check your credentials and try again.");
-      } else {
-        setFormError(
-          describeError(
-            error,
-            "We couldn't sign you in. Check your credentials and try again.",
-          ),
-        );
-      }
+      setFormError(describeLoginError(error));
     }
   };
 

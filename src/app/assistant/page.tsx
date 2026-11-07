@@ -9,7 +9,10 @@ import { SectionLabel } from "@/components/ui/badge";
 import { ProcessingNote } from "@/components/ui/feedback";
 import { Enter } from "@/components/shared/motion";
 import { useDashboard } from "@/hooks/use-api";
+import { api } from "@/lib/api";
+import { AssistantMessageContent } from "@/lib/assistant-message-content.mjs";
 import { cn } from "@/lib/utils";
+import type { ApiResponse } from "@/types";
 
 interface ChatMessage {
   id: string;
@@ -68,16 +71,18 @@ export default function AssistantPage() {
     setMessages((prev) => [...prev, userMessage]);
 
     try {
-      const response = await fetch("/api/v1/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
-      });
+      const { data: payload } = await api.post<
+        ApiResponse<{
+          answer: string;
+          groundedIn: string[];
+          provider: string;
+          degraded: boolean;
+          followUps: string[];
+        }>
+      >("/ai/chat", { message });
 
-      const payload = await response.json();
-
-      if (!response.ok || !payload.success) {
-        throw new Error(payload?.error?.message ?? "Request failed");
+      if (!payload.success) {
+        throw new Error(payload.error.message);
       }
 
       const assistantMessage: ChatMessage = {
@@ -224,45 +229,7 @@ export default function AssistantPage() {
                           )}
                         </div>
 
-                        <div className="mt-3 whitespace-pre-line text-[12.5px] leading-[1.86] text-ink-soft">
-                          {message.content
-                            .split("\n\n")
-                            .map((block, i) =>
-                              /^\s*[-•]/.test(block) ? (
-                                <ul key={i} className="my-2.5 space-y-2">
-                                  {block.split("\n").map((line, j) => (
-                                    <li key={j} className="flex items-start gap-2.5">
-                                      <span
-                                        className="mt-[9px] h-[3.5px] w-[3.5px] shrink-0 rounded-full bg-navy"
-                                        aria-hidden="true"
-                                      />
-                                      <span
-                                        dangerouslySetInnerHTML={{
-                                          __html: line
-                                            .replace(/^\s*[-•]\s*/, "")
-                                            .replace(
-                                              /\*\*(.+?)\*\*/g,
-                                              '<strong class="font-semibold text-ink">$1</strong>',
-                                            ),
-                                        }}
-                                      />
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p
-                                  key={i}
-                                  className="my-2.5"
-                                  dangerouslySetInnerHTML={{
-                                    __html: block.replace(
-                                      /\*\*(.+?)\*\*/g,
-                                      '<strong class="font-semibold text-ink">$1</strong>',
-                                    ),
-                                  }}
-                                />
-                              ),
-                            )}
-                        </div>
+                        <AssistantMessageContent content={message.content} />
 
                         {message.groundedIn && message.groundedIn.length > 0 && (
                           <div className="mt-5 rounded-[10px] border border-rule bg-paper-2/60 p-3.5">

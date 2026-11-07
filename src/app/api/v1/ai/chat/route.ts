@@ -1,42 +1,26 @@
-import { z } from "zod";
-import { errors, ok, rateLimit } from "@/lib/server/http";
+import {
+  createAiChatPost,
+  loadBackendCareerContext,
+  verifyBackendSession,
+} from "@/lib/server/ai-chat-security.mjs";
 import { generateCareerAnswer } from "@/lib/server/ai";
+import { rateLimit } from "@/lib/server/http";
 
 export const dynamic = "force-dynamic";
 
-const chatSchema = z.object({
-  message: z.string().min(2).max(2000),
-  conversationId: z.string().uuid().optional(),
-});
+const backendBaseUrl =
+  process.env.BACKEND_API_URL ?? "http://127.0.0.1:4000/api/v1";
 
 /**
- * Contextual AI career assistant.
- * The provider abstraction lives in `@/lib/server/ai` so the transport layer
- * never needs to know which model is behind the answer.
+ * AI chat uses the established backend JWT guard as its authentication
+ * authority. The backend verifies the bearer token and every context request
+ * goes through owner-scoped Nest endpoints; this route does not query a DB.
  */
-export async function POST(request: Request) {
-  if (!rateLimit("ai-chat", 20)) return errors.rateLimited();
-
-  const body = await request.json().catch(() => null);
-  const parsed = chatSchema.safeParse(body);
-
-  if (!parsed.success) {
-    return errors.validation("Please enter a question of at least two characters.");
-  }
-
-  try {
-    const result = await generateCareerAnswer(parsed.data.message);
-    return ok(result, {
-      provider: result.provider,
-      model: result.model,
-      generatedAt: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error("[api/v1/ai/chat] generation failed", {
-      message: error instanceof Error ? error.message : "unknown",
-    });
-    return errors.unavailable(
-      "The career assistant is temporarily unavailable. Your data is safe — please try again in a moment.",
-    );
-  }
-}
+export const POST = createAiChatPost({
+  verifySession: (request) =>
+    verifyBackendSession(request, { baseUrl: backendBaseUrl }),
+  loadContext: (request, principal) =>
+    loadBackendCareerContext(request, principal, { baseUrl: backendBaseUrl }),
+  rateLimit,
+  generateAnswer: generateCareerAnswer,
+});
