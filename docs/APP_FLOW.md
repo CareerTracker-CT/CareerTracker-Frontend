@@ -43,9 +43,30 @@ Login ──► Onboarding Complete?
 ## 3. Subsystem Detailed Flows
 
 ### Resume Analysis Flow
-$$\text{Upload Resume} \longrightarrow \text{Validation} \longrightarrow \text{Parsing} \longrightarrow \text{ATS Analysis} \longrightarrow \text{ATS Score} \longrightarrow \text{Findings \& Recommendations}$$
+```
+Upload resume + JD
+      │
+      ▼
+Extract both documents in memory
+      │
+      ▼
+Detect advertised positions in the JD
+      ├── 0 or 1 position ──► whole-JD evidence analysis ──► Overview / Evidence / Inspection
+      │                         (no title shows a neutral “no position title” note)
+      ├── 2+ confident positions ──► compact role-selection panel (no preselection)
+      │                              └── choose one + Analyze ──► server validates token
+      │                                                          and scores only that position
+      ├── possible multiple, <2 reliable boundaries
+      │        └── no score; review-only sections; “Provide a one-position description”
+      └── unreliable boundaries (≥2 headings, one unsupported)
+               └── only supported sections are selectable; others are review-only
 
-- **User Actions**: Upload new file, re-analyze existing resume, inspect analysis history, view recommendations.
+Results header shows the analyzed position.
+“Change position” clears the score, keeps the files, and reopens the selection panel.
+```
+
+- **User Actions**: Upload a resume and JD, review extracted text, select one advertised position when required, analyze, change the selected position without re-uploading, inspect requirement evidence, inspect document readability, review saved-record history separately.
+- **Scope safety**: qualifications from other positions are excluded; preamble requirements are inherited only when they explicitly cover all positions. Unsupported or ambiguous statements in the selected position still withhold the score. If the notice announces more than one position but a reliable split cannot be established, the score is withheld entirely; the UI does not invent boundaries or offer an aggregate.
 
 ### Skill Gap Flow
 $$\text{Current Skills} \longrightarrow \text{Target Role} \longrightarrow \text{Required Skills} \longrightarrow \text{Gap Calculation} \longrightarrow \text{Resource Mapping} \longrightarrow \text{Progress Update}$$
@@ -66,6 +87,13 @@ $$\text{User Prompt} \longrightarrow \text{Context Assembly} \longrightarrow \te
 | :--- | :--- | :--- |
 | **No Resume Uploaded** | Displays empty state card: *"No resume uploaded yet"* | Primary CTA button: `Upload Resume` |
 | **Failed Resume Analysis** | Shows friendly error explaining parsing failure | Action button: `Retry Analysis` |
+| **Multiple Positions in JD** | Shows compact selection panel; returns no aggregate score and preselects nothing | Choose the position you are applying for |
+| **Possible Multiple Positions, No Reliable Split** | Shows a neutral structural-uncertainty explanation, no radios and no Analyze action; explicit status is `possible_multiple` | Paste/upload a description for one position |
+| **Unreliable Position Boundaries** | Shows all sections for review but only enables sections with their own qualification text; status is `unreliable_boundaries` | Choose a supported section or supply a single-position JD |
+| **One Identified Position / No Recognized Title** | Whole-JD analysis proceeds; Overview says “Position identified” or neutrally notes that no title was recognized | Confirm the description covers one position |
+| **Stale / Invalid Position Selection** | Server rejects `ROLE_SELECTION_INVALID`; no score from another role is shown | Re-select from the current document |
+| **Unresolved Boundary Token** | Server rejects `ROLE_BOUNDARIES_UNRESOLVED` and never falls back to an aggregate | Supply a one-position description |
+| **Role Changed After Analysis** | Previous score is cleared immediately; files and candidates are retained | Analyze the newly selected position |
 | **No Skill Gaps Found** | Displays positive completion state badge | Action button: `Explore Advanced Electives` |
 | **AI Service Downtime** | Fallback to deterministic grounded rule engine | Displays info banner: *"Using Grounded Engine"* |
 | **No Roadmap Created** | Displays initial roadmap builder callout | Action button: `Generate My Roadmap` |

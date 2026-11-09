@@ -1,124 +1,54 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, CheckCircle2, FileText, LoaderCircle, UploadCloud, X } from "lucide-react";
+import { AlertCircle, LoaderCircle } from "lucide-react";
+import {
+  AnalysisWorkspace,
+  type AnalysisView,
+} from "@/components/resume/analysis-workspace";
+import { DocumentSummaryBar } from "@/components/resume/document-summary-bar";
+import { ExtractedTextDrawer } from "@/components/resume/extracted-text-drawer";
+import { IntakeFields } from "@/components/resume/intake-fields";
+import { RoleSelectionPanel } from "@/components/resume/role-selection-panel";
+import {
+  MAX_BYTES,
+  MAX_PASTED_JD_CHARACTERS,
+  type EvidenceCopyState,
+  type ExtractionLimits,
+  type ExtractionResult,
+} from "@/components/resume/analysis-types";
+import { useCreateResumeLibrary } from "@/hooks/use-api";
 import { api } from "@/lib/api";
+import {
+  emptyResumeDocument,
+  roleLabelFromMatch,
+  skillsFromEvidence,
+} from "@/lib/resume-builder.mjs";
+import { requestResumeOpen } from "@/lib/resume-events.mjs";
+import { describeResumeLibraryError } from "@/lib/resume-library.mjs";
+import type {
+  AnalyzeResponse,
+  FocusRequest,
+  ResumeAnalysisPayload,
+  RoleSelection,
+} from "@/lib/resume-analysis.mjs";
 import type { ApiResponse } from "@/types";
+import { cn } from "@/lib/utils";
 
-type ExtractedDocument = {
-  kind: "resume" | "jobDescription";
-  format: "PDF" | "DOCX" | "PASTED_TEXT";
-  text: string;
-  characterCount: number;
-  status: "EXTRACTED" | "EXTRACTED_WITH_WARNINGS";
-  warnings: { code: string; message: string }[];
-};
+type Target = "resume" | "jobDescription";
+type Busy = "extract" | "analyze" | null;
 
-type ExtractionResult = { resume: ExtractedDocument; jobDescription: ExtractedDocument };
-type Finding = {
-  requirement: { id: string; category: string; displayName: string; priority: string; sourceExcerpts: string[]; purpose?: StatementPurpose; sectionHeading?: string };
-  evidence: { classification: string; excerpts: { section: string; text: string }[]; explanation: string };
-  suggestion: string;
-};
-type StatementPurpose =
-  | "ENTRY_REQUIRED"
-  | "ENTRY_PREFERRED"
-  | "ROLE_RESPONSIBILITY"
-  | "TRAINING_OUTCOME"
-  | "SECTION_HEADING"
-  | "INFORMATIONAL"
-  | "AMBIGUOUS_REQUIREMENT";
-type RequirementReviewItem = {
-  id: string;
-  classification: "unrecognized" | "ambiguous";
-  priority: "required" | "preferred" | "unspecified";
-  sourceExcerpts: string[];
-  explanation: string;
-  hardEligibilityConcern: boolean;
-  purpose?: StatementPurpose;
-  concepts?: string[];
-  sectionHeading?: string;
-};
-type LearningOutcome = {
-  id: string;
-  excerpt: string;
-  concepts: string[];
-  conceptIds: string[];
-  sectionHeading?: string;
-};
-type AnalysisResult = {
-  jobMatch: {
-  engineVersion: string;
-  rubricVersion: string;
-  coveragePolicyVersion: string;
-  score: number | null;
-  scoreUnavailableReason?: string;
-  interpretationVersion?: string;
-  requirementCoverage: {
-    status: "complete" | "partial" | "none_detected";
-    evaluatedRequirementCount: number;
-    reviewRequiredCount: number;
-    items: RequirementReviewItem[];
-    candidateRequirementCount?: number;
-    unsupportedRequirementCount?: number;
-    ambiguousRequirementCount?: number;
-    trainingOutcomeCount?: number;
-    excludedStatementCount?: number;
-    statementCounts?: {
-      entryRequired: number;
-      entryPreferred: number;
-      roleResponsibility: number;
-      trainingOutcome: number;
-      sectionHeading: number;
-      informational: number;
-      ambiguousRequirement: number;
-    };
-  };
-  requirements: Finding["requirement"][];
-  findings: Finding[];
-  requirementsNotDemonstrated: Finding[];
-  hardEligibilityConcerns: Finding[];
-  learningOutcomes?: LearningOutcome[];
-  limitations: string[];
-  };
-  atsReadability: {
-    assessmentVersion: string;
-    rubricVersion: string;
-    status: "partial" | "insufficient";
-    score: null;
-    qualitativeSummary: "text_extracted" | "text_extracted_with_findings" | "insufficient_evidence";
-    coveragePercent: number;
-    scoreUnavailableReason: string;
-    checks: { id: string; title: string; status: "passed" | "issue" | "warning" | "not_evaluated"; severity: string; evidence: string; explanation: string; recommendation: string }[];
-    limitations: string[];
-  };
-};
-const MAX_BYTES = 5 * 1024 * 1024;
-const MAX_PASTED_JD_CHARACTERS = 40_000;
-const ACCEPTED = ".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-
-const PURPOSE_LABELS: Record<StatementPurpose, string> = {
-  ENTRY_REQUIRED: "Entry requirement",
-  ENTRY_PREFERRED: "Preferred qualification",
-  ROLE_RESPONSIBILITY: "Role responsibility",
-  TRAINING_OUTCOME: "Training outcome",
-  SECTION_HEADING: "Section heading",
-  INFORMATIONAL: "Informational",
-  AMBIGUOUS_REQUIREMENT: "Ambiguous requirement",
-};
-const EVIDENCE_BADGES: Record<string, string> = {
-  demonstrated: "border-good/40 text-good",
-  explicit: "border-navy/30 text-navy",
-  related: "border-warn/40 text-warn",
-  insufficient: "border-warn/40 text-warn",
-  uncertain: "border-warn/40 text-warn",
-  not_found: "border-bad/40 text-bad",
-};
-
-type InputLimits = { maxDocumentBytes: number; maxPastedJobDescriptionCharacters: number };
+const PRIMARY_BUTTON =
+  "btn-base h-10 rounded-[10px] bg-navy px-4 text-[12.5px] font-medium text-white hover:bg-navy-dark disabled:cursor-not-allowed disabled:opacity-60";
+const SECONDARY_BUTTON =
+  "btn-base h-10 rounded-[10px] border border-rule-strong bg-panel px-4 text-[12px] font-medium text-ink hover:border-navy hover:text-navy disabled:opacity-60";
+const GHOST_BUTTON =
+  "btn-base h-10 rounded-[10px] px-3 text-[12px] font-medium text-warm hover:bg-navy-wash/40 hover:text-navy disabled:opacity-60";
 
 function validateFile(file: File, maxBytes: number): string | null {
-  if (file.size > maxBytes) return `Each document must be ${(maxBytes / (1024 * 1024)).toFixed(2)} MB or smaller.`;
+  if (file.size > maxBytes) {
+    return `Each document must be ${(maxBytes / (1024 * 1024)).toFixed(2)} MB or smaller.`;
+  }
   if (!/\.(pdf|docx)$/i.test(file.name)) return "Choose a PDF or DOCX file.";
   // Browser MIME values are hints only. The backend checks the extension and
   // file signature before parsing, including when the browser reports no MIME.
@@ -126,25 +56,72 @@ function validateFile(file: File, maxBytes: number): string | null {
 }
 
 export function DocumentIntake() {
-  const resumeInput = useRef<HTMLInputElement>(null);
-  const jdInput = useRef<HTMLInputElement>(null);
-  const [resume, setResume] = useState<File | null>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  const focusSeq = useRef(0);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [jdFile, setJdFile] = useState<File | null>(null);
   const [jdText, setJdText] = useState("");
   const [useJdFile, setUseJdFile] = useState(false);
   const [result, setResult] = useState<ExtractionResult | null>(null);
-  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [analysis, setAnalysis] = useState<ResumeAnalysisPayload | null>(null);
+  const [roleSelection, setRoleSelection] = useState<RoleSelection | null>(null);
+  const [selectedRoleId, setSelectedRoleId] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const [inputLimits, setInputLimits] = useState<InputLimits>({
+  const [busy, setBusy] = useState<Busy>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [view, setView] = useState<AnalysisView>("overview");
+  const [focusRequest, setFocusRequest] = useState<FocusRequest | null>(null);
+  const createEvidenceCopy = useCreateResumeLibrary();
+  const [copyState, setCopyState] = useState<
+    EvidenceCopyState & { forAnalysis: ResumeAnalysisPayload | null }
+  >({ busy: false, error: null, created: null, forAnalysis: null });
+  // A new analysis replaces the offer; a previous copy stays in the library.
+  const visibleCopyState: EvidenceCopyState =
+    copyState.forAnalysis === analysis
+      ? copyState
+      : { busy: false, error: null, created: null };
+
+  async function handoffToBuilder() {
+    if (!analysis || createEvidenceCopy.isPending) return;
+    const skills = skillsFromEvidence(analysis.jobMatch);
+    const role = roleLabelFromMatch(analysis.jobMatch);
+    const name = (role ? `${role} - role copy` : "Role-specific resume copy").slice(0, 120);
+    setCopyState({ busy: true, error: null, created: null, forAnalysis: analysis });
+    try {
+      const created = await createEvidenceCopy.mutateAsync({
+        name,
+        targetRoleLabel: role || undefined,
+        content: { ...emptyResumeDocument(), skills },
+      });
+      setCopyState({
+        busy: false,
+        error: null,
+        created: { id: created.id, name: created.name },
+        forAnalysis: analysis,
+      });
+    } catch (error) {
+      setCopyState({
+        busy: false,
+        error: describeResumeLibraryError(error).message,
+        created: null,
+        forAnalysis: analysis,
+      });
+    }
+  }
+
+  function openCopyInBuilder() {
+    if (visibleCopyState.created) requestResumeOpen(visibleCopyState.created.id);
+  }
+  const [inputLimits, setInputLimits] = useState<ExtractionLimits>({
     maxDocumentBytes: MAX_BYTES,
     maxPastedJobDescriptionCharacters: MAX_PASTED_JD_CHARACTERS,
   });
 
   useEffect(() => {
     let active = true;
-    api.get<ApiResponse<InputLimits>>("/resumes/limits", { timeout: 10_000 })
+    api
+      .get<ApiResponse<ExtractionLimits>>("/resumes/limits", { timeout: 10_000 })
       .then((response) => {
         if (active && response.data.success) setInputLimits(response.data.data);
       })
@@ -152,54 +129,83 @@ export function DocumentIntake() {
         // Keep the protocol maximum as a fallback. Upload/analyze responses
         // remain authoritative if the protected limits route is unavailable.
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, []);
 
-  function chooseFile(file: File | undefined, target: "resume" | "jd") {
-    if (!file || busy) return;
-    const issue = validateFile(file, inputLimits.maxDocumentBytes);
-    setError(issue ?? "");
+  const isBusy = busy !== null;
+
+  function clearOutputs() {
     setResult(null);
     setAnalysis(null);
-    if (issue) {
-      if (target === "resume") setResume(null);
-      else setJdFile(null);
-      return;
-    }
-    if (target === "resume") setResume(file);
-    else setJdFile(file);
+    setRoleSelection(null);
+    setSelectedRoleId("");
+    setPreviewOpen(false);
+    setEditing(false);
+    setView("overview");
+    setFocusRequest(null);
   }
 
-  function clearFile(target: "resume" | "jd") {
-    if (target === "resume") {
-      setResume(null);
-      if (resumeInput.current) resumeInput.current.value = "";
-    } else {
-      setJdFile(null);
-      if (jdInput.current) jdInput.current.value = "";
+  function chooseFile(file: File | undefined, target: Target) {
+    if (!file || isBusy) return;
+    const issue = validateFile(file, inputLimits.maxDocumentBytes);
+    setError(issue ?? "");
+    if (issue) {
+      if (target === "resume") setResumeFile(null);
+      else setJdFile(null);
+      clearOutputs();
+      return;
     }
-    setResult(null);
-    setAnalysis(null);
+    if (target === "resume") setResumeFile(file);
+    else setJdFile(file);
+    clearOutputs();
+  }
+
+  function clearFile(target: Target) {
+    if (target === "resume") setResumeFile(null);
+    else setJdFile(null);
     setError("");
+    clearOutputs();
+  }
+
+  function changeJdText(value: string) {
+    setJdText(value);
+    setError("");
+    clearOutputs();
+  }
+
+  function changeJdSource(nextUseFile: boolean) {
+    setUseJdFile(nextUseFile);
+    setError("");
+    clearOutputs();
   }
 
   async function extract() {
     setError("");
     setResult(null);
     setAnalysis(null);
-    if (!resume) return setError("Choose your resume first.");
+    setRoleSelection(null);
+    setSelectedRoleId("");
+    setPreviewOpen(false);
+    if (!resumeFile) return setError("Choose your resume first.");
     if (useJdFile ? !jdFile : !jdText.trim()) {
       return setError(useJdFile ? "Choose a job description file." : "Paste a job description.");
     }
-    if (!useJdFile && Array.from(jdText).length > inputLimits.maxPastedJobDescriptionCharacters) {
-      return setError(`The job description must be ${inputLimits.maxPastedJobDescriptionCharacters.toLocaleString()} Unicode code points or fewer.`);
+    if (
+      !useJdFile &&
+      Array.from(jdText).length > inputLimits.maxPastedJobDescriptionCharacters
+    ) {
+      return setError(
+        `The job description must be ${inputLimits.maxPastedJobDescriptionCharacters.toLocaleString()} Unicode code points or fewer.`,
+      );
     }
     const body = new FormData();
-    body.append("resume", resume);
+    body.append("resume", resumeFile);
     if (useJdFile && jdFile) body.append("jobDescriptionFile", jdFile);
     else body.append("jobDescriptionText", jdText);
 
-    setBusy(true);
+    setBusy("extract");
     try {
       const response = await api.post<ApiResponse<ExtractionResult>>("/resumes/extract", body, {
         timeout: 45_000,
@@ -208,291 +214,330 @@ export function DocumentIntake() {
       });
       if (!response.data.success) throw new Error(response.data.error.message);
       setResult(response.data.data);
+      setEditing(false);
+      setView("overview");
+      setFocusRequest(null);
     } catch (cause) {
       const data = (cause as { response?: { data?: ApiResponse<unknown> } })?.response?.data;
       const message = data && !data.success ? data.error.message : null;
-      setError(message || (cause instanceof Error ? cause.message : "Document extraction failed. Try again."));
+      setError(
+        message || (cause instanceof Error ? cause.message : "Document extraction failed. Try again."),
+      );
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
-  async function analyze() {
+  async function analyze(roleId?: string) {
     setError("");
     setAnalysis(null);
     if (!result) return setError("Extract and preview both documents before analysis.");
-    if (!resume) return setError("Choose your resume first.");
-    if (!useJdFile && Array.from(jdText).length > inputLimits.maxPastedJobDescriptionCharacters) {
-      return setError(`The job description must be ${inputLimits.maxPastedJobDescriptionCharacters.toLocaleString()} Unicode code points or fewer.`);
+    if (!resumeFile) return setError("Choose your resume first.");
+    if (
+      !useJdFile &&
+      Array.from(jdText).length > inputLimits.maxPastedJobDescriptionCharacters
+    ) {
+      return setError(
+        `The job description must be ${inputLimits.maxPastedJobDescriptionCharacters.toLocaleString()} Unicode code points or fewer.`,
+      );
     }
     const body = new FormData();
-    body.append("resume", resume);
+    body.append("resume", resumeFile);
     if (useJdFile && jdFile) body.append("jobDescriptionFile", jdFile);
     else if (jdText.trim()) body.append("jobDescriptionText", jdText);
     else return setError("Provide a job description before analysis.");
-    setBusy(true);
+    if (roleId) body.append("jobRoleId", roleId);
+
+    setBusy("analyze");
     try {
-      const response = await api.post<ApiResponse<AnalysisResult>>("/resumes/analyze", body, {
+      const response = await api.post<ApiResponse<AnalyzeResponse>>("/resumes/analyze", body, {
         timeout: 45_000,
         headers: { "Content-Type": undefined },
       });
       if (!response.data.success) throw new Error(response.data.error.message);
-      setAnalysis(response.data.data);
+      const data = response.data.data;
+      setRoleSelection(data.roleSelection ?? null);
+      if (!data.jobMatch) {
+        setAnalysis(null);
+        setEditing(false);
+        setView("overview");
+        setFocusRequest(null);
+        return;
+      }
+      setAnalysis({
+        jobMatch: data.jobMatch,
+        atsReadability: data.atsReadability,
+        ...(data.roleSelection ? { roleSelection: data.roleSelection } : {}),
+      });
+      setEditing(false);
+      setView("overview");
+      setFocusRequest(null);
     } catch (cause) {
       const data = (cause as { response?: { data?: ApiResponse<unknown> } })?.response?.data;
       const message = data && !data.success ? data.error.message : null;
       setError(message || (cause instanceof Error ? cause.message : "Analysis failed. Try again."));
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
-  function renderAtsChecks(title: string, statuses: string[]) {
-    const checks = analysis?.atsReadability.checks.filter((check) => statuses.includes(check.status)) ?? [];
-    if (checks.length === 0) return null;
-    return <div className="mt-4">
-      <h5 className="text-[12px] font-semibold text-ink">{title}</h5>
-      <ul className="mt-2 space-y-3">
-        {checks.map((check) => (
-          <li key={check.id} className="rounded-[9px] border border-rule bg-paper p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2"><h6 className="text-[12px] font-semibold text-ink">{check.title}</h6><span className={`rounded-full border px-2 py-1 text-[10px] capitalize ${check.status === "issue" ? "border-bad/40 text-bad" : check.status === "warning" ? "border-warn/40 text-warn" : "border-rule text-warm"}`}>{check.status.replaceAll("_", " ")}</span></div>
-            <p className="mt-2 text-[11px] text-warm"><strong className="text-ink">Evidence:</strong> {check.evidence}</p>
-            <p className="mt-1 text-[11px] leading-5 text-warm">{check.explanation}</p>
-            {check.status !== "passed" && <p className="mt-1 text-[11px] text-navy">{check.recommendation}</p>}
-          </li>
-        ))}
-      </ul>
-    </div>;
+  function openEvidence(target?: { key?: string | null; state?: string }) {
+    focusSeq.current += 1;
+    setFocusRequest({
+      key: target?.key ?? null,
+      state: target?.state ?? "all",
+      seq: focusSeq.current,
+    });
+    setView("evidence");
   }
 
-  const match = analysis?.jobMatch;
-  const findings = match?.findings ?? [];
-  const learningOutcomes = match?.learningOutcomes ?? [];
-  const demonstratedCount = findings.filter((finding) => ["demonstrated", "explicit"].includes(finding.evidence.classification)).length;
-  const gapFindings = findings.filter((finding) => ["not_found", "insufficient"].includes(finding.evidence.classification));
-  const highImpactGaps = findings
-    .filter((finding) => finding.requirement.priority === "required" && ["not_found", "insufficient"].includes(finding.evidence.classification))
-    .slice(0, 5);
-  const unresolvedItems = [
-    ...new Map(
-      (match?.requirementCoverage.items ?? []).map((item) => [
-        `${item.classification}|${(item.sourceExcerpts[0] ?? "").replace(/\s+/g, " ").trim()}`,
-        item,
-      ]),
-    ).values(),
-  ];
-  const unresolvedGroups = [
-    { classification: "unrecognized" as const, title: "Outside the supported vocabulary", items: unresolvedItems.filter((item) => item.classification === "unrecognized") },
-    { classification: "ambiguous" as const, title: "Ambiguous wording", items: unresolvedItems.filter((item) => item.classification === "ambiguous") },
-  ];
-  const totalStatements = match?.requirementCoverage.statementCounts
-    ? Object.values(match.requirementCoverage.statementCounts).reduce((total, count) => total + count, 0)
-    : 0;
+  function startEditing() {
+    setEditing(true);
+    requestAnimationFrame(() => sectionRef.current?.scrollIntoView({ block: "start" }));
+  }
+
+  function changeRole() {
+    if (!analysis) return;
+    // The previous role's score must not survive a scope change.
+    setAnalysis(null);
+    setView("overview");
+    setFocusRequest(null);
+    requestAnimationFrame(() => sectionRef.current?.scrollIntoView({ block: "start" }));
+  }
+
+  const liveMessage =
+    busy === "extract"
+      ? "Extracting document text."
+      : busy === "analyze"
+        ? "Comparing resume evidence with the job description."
+        : analysis
+          ? "Analysis complete. Overview, requirement evidence and document inspection are available."
+          : result
+            ? "Text extracted. Ready to analyze."
+            : "";
 
   return (
-    <section aria-labelledby="document-intake-title" className="mt-10 rounded-[13px] border border-rule bg-panel p-6 sm:p-8">
-      <div className="flex items-start gap-3">
-        <div className="rounded-[9px] border border-rule bg-paper-2 p-2.5"><UploadCloud className="h-5 w-5 text-navy" aria-hidden="true" /></div>
-        <div>
-          <h2 id="document-intake-title" className="text-[18px] font-semibold text-ink">Preview resume and job description</h2>
-          <p className="mt-2 max-w-[70ch] text-[12px] leading-6 text-warm">Documents are analyzed in memory for this request only. Job match and ATS readability are separate platform assessments; neither is a hiring prediction.</p>
+    <>
+      <section
+        ref={sectionRef}
+        aria-labelledby="document-intake-title"
+        className="scroll-mt-24 rounded-[14px] border border-rule bg-panel"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-rule px-5 py-4 sm:px-6">
+          <div className="min-w-0">
+            <p className="label-caps text-navy">
+              {result ? "Analysis inputs" : "Resume workspace"}
+            </p>
+            <h2 id="document-intake-title" className="mt-1.5 text-[17px] font-semibold text-ink">
+              {result ? "Documents in this analysis" : "Add a resume and a job description"}
+            </h2>
+            <p className="mt-2 max-w-[76ch] text-[11.5px] leading-5 text-warm">
+              {result
+                ? "Switch between views below without losing your inputs or results. The extracted text is available on demand."
+                : "Upload a PDF or DOCX resume and provide the job description as text or a file. Both are parsed in memory for this request only."}
+            </p>
+          </div>
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-rule px-2.5 py-1 text-[9.5px] font-medium uppercase tracking-[0.1em] text-warm">
+            <span className="h-[5px] w-[5px] rounded-full bg-warn" aria-hidden="true" />
+            Not saved
+          </span>
         </div>
-      </div>
 
-      <div className="mt-7 grid gap-6 lg:grid-cols-2">
-        <div>
-          <label className="label-caps text-warm" htmlFor="resume-file">Resume (required)</label>
-          <input ref={resumeInput} id="resume-file" type="file" accept={ACCEPTED} className="sr-only" onChange={(event) => { chooseFile(event.currentTarget.files?.[0], "resume"); event.currentTarget.value = ""; }} />
-          <div
-            onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
-            onDragOver={(event) => event.preventDefault()}
-            onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }}
-            onDrop={(event) => { event.preventDefault(); setDragging(false); chooseFile(event.dataTransfer.files[0], "resume"); }}
-            className={`mt-2 rounded-[10px] border-2 border-dashed p-3 transition-colors ${dragging ? "border-navy bg-navy-wash/30" : "border-rule-strong bg-paper"}`}
-          >
-            <button type="button" disabled={busy} onClick={() => resumeInput.current?.click()} className="flex min-h-12 w-full items-center gap-3 text-left text-[12px] text-ink focus-visible:outline-2 focus-visible:outline-navy disabled:opacity-60">
-              <FileText className="h-4 w-4 shrink-0 text-navy" aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate">{resume?.name ?? `Drop a resume here or choose PDF/DOCX (up to ${(inputLimits.maxDocumentBytes / (1024 * 1024)).toFixed(2)} MB)`}</span>
-            </button>
-            {resume && <div className="mt-1 flex items-center justify-between gap-2 pl-7 text-[10px] text-warm"><span>{(resume.size / 1024).toFixed(0)} KB · {resume.type || "type checked by file signature"}</span><button type="button" disabled={busy} onClick={() => clearFile("resume")} className="inline-flex items-center gap-1 rounded px-2 py-1 text-warm hover:text-bad disabled:opacity-50" aria-label="Remove resume"><X className="h-3 w-3" aria-hidden="true" />Remove</button></div>}
-          </div>
-        </div>
-        <div>
-          <span className="label-caps text-warm">Job description (required)</span>
-          <div className="mt-2 flex gap-2" role="group" aria-label="Job description source">
-            <button type="button" disabled={busy} aria-pressed={!useJdFile} onClick={() => { setUseJdFile(false); setError(""); setResult(null); setAnalysis(null); }} className={`rounded-[8px] px-3 py-2 text-[11px] disabled:opacity-50 ${!useJdFile ? "bg-navy text-white" : "border border-rule text-warm"}`}>Paste text</button>
-            <button type="button" disabled={busy} aria-pressed={useJdFile} onClick={() => { setUseJdFile(true); setError(""); setResult(null); setAnalysis(null); }} className={`rounded-[8px] px-3 py-2 text-[11px] disabled:opacity-50 ${useJdFile ? "bg-navy text-white" : "border border-rule text-warm"}`}>Upload PDF/DOCX</button>
-          </div>
-          {useJdFile ? (
-            <>
-              <input ref={jdInput} id="job-description-file" type="file" accept={ACCEPTED} className="sr-only" onChange={(event) => { chooseFile(event.currentTarget.files?.[0], "jd"); event.currentTarget.value = ""; }} />
-              <div className="mt-2 flex min-h-14 items-center gap-3 rounded-[10px] border border-rule-strong bg-paper px-4 text-[12px] text-ink">
-                <FileText className="h-4 w-4 shrink-0 text-navy" aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate">{jdFile?.name ?? "No job description file selected"}</span>
-                <button type="button" disabled={busy} onClick={() => jdInput.current?.click()} className="shrink-0 text-[11px] font-medium text-navy underline underline-offset-2 disabled:opacity-50">{jdFile ? "Replace" : "Choose file"}</button>
-                {jdFile && <button type="button" disabled={busy} onClick={() => clearFile("jd")} className="inline-flex shrink-0 items-center gap-1 text-[10px] text-warm hover:text-bad disabled:opacity-50" aria-label="Remove job description file"><X className="h-3.5 w-3.5" aria-hidden="true" />Remove</button>}
-              </div>
-              {jdFile && <p className="mt-1 text-[10px] text-warm">{(jdFile.size / 1024).toFixed(0)} KB · {jdFile.type || "type checked by file signature"}</p>}
-            </>
+        <div className="px-5 py-5 sm:px-6">
+          <p className="sr-only" aria-live="polite">
+            {liveMessage}
+          </p>
+
+          {!result ? (
+            <IntakeFields
+              resume={resumeFile}
+              jdFile={jdFile}
+              jdText={jdText}
+              useJdFile={useJdFile}
+              limits={inputLimits}
+              busy={isBusy}
+              onChooseFile={chooseFile}
+              onClearFile={clearFile}
+              onJdTextChange={changeJdText}
+              onJdSourceChange={changeJdSource}
+            />
           ) : (
-            <textarea aria-label="Job description text" value={jdText} onChange={(event) => { setJdText(event.target.value); setResult(null); setAnalysis(null); setError(""); }} disabled={busy} rows={5} placeholder="Paste the job description here…" className="mt-2 w-full resize-y rounded-[10px] border border-rule-strong bg-paper p-3 text-[12px] leading-5 text-ink placeholder:text-warm-2 focus:border-navy focus:outline-none disabled:opacity-60" />
+            <DocumentSummaryBar
+              result={result}
+              resumeFile={resumeFile}
+              jdFile={jdFile}
+              useJdFile={useJdFile}
+              jdText={jdText}
+              busy={isBusy}
+              hasAnalysis={Boolean(analysis)}
+              onReviewText={() => setPreviewOpen(true)}
+              onEditInputs={startEditing}
+              onAnalyze={() => analyze(selectedRoleId || undefined)}
+            />
           )}
-          {!useJdFile && <p className={`mt-1 text-right text-[10px] ${Array.from(jdText).length > inputLimits.maxPastedJobDescriptionCharacters ? "text-bad" : "text-warm"}`}>{Array.from(jdText).length.toLocaleString()} / {inputLimits.maxPastedJobDescriptionCharacters.toLocaleString()} Unicode code points</p>}
-        </div>
-      </div>
 
-      {error && <p role="alert" className="mt-5 flex items-center gap-2 text-[12px] text-bad"><AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />{error}</p>}
-      <button type="button" onClick={extract} disabled={busy} className="btn-base mt-6 h-[42px] rounded-[10px] bg-navy px-5 text-[13px] font-medium text-white hover:bg-navy-dark disabled:cursor-wait disabled:opacity-60">
-        {busy ? <><LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> Extracting…</> : "Extract text for preview"}
-      </button>
-
-      {result && <div aria-live="polite" className="mt-8 space-y-5">
-        {[result.resume, result.jobDescription].map((document) => (
-          <article key={document.kind} className="overflow-hidden rounded-[10px] border border-rule">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rule bg-paper-2 px-4 py-3">
-              <h3 className="text-[12px] font-semibold text-ink">{document.kind === "resume" ? "Resume" : "Job description"} · {document.format}</h3>
-              <span className="flex items-center gap-1.5 text-[10px] text-good"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />{document.characterCount.toLocaleString()} characters extracted</span>
+          {result && analysis && analysis.jobMatch.roleScope?.mode === "selected" && (
+            <div className="mt-4 flex flex-wrap items-start justify-between gap-3 rounded-[10px] border border-rule bg-navy-wash/25 px-3.5 py-3">
+              <div className="min-w-0">
+                <p className="label-caps text-navy">Position analyzed</p>
+                <p className="mt-1 break-words text-[12px] font-semibold text-ink">
+                  {analysis.jobMatch.roleScope.selectedRole?.title ?? "Selected position"}
+                </p>
+                <p className="mt-1 max-w-[76ch] text-[10.5px] leading-5 text-warm">
+                  Only this position&apos;s qualifications are scored.{" "}
+                  {Math.max(analysis.jobMatch.roleScope.detectedRoleCount - 1, 0)} other detected
+                  position
+                  {analysis.jobMatch.roleScope.detectedRoleCount - 1 === 1 ? " is" : "s are"}{" "}
+                  excluded.
+                  {analysis.jobMatch.roleScope.ambiguous
+                    ? " The detected boundaries were uncertain; review the source text before relying on this result."
+                    : ""}
+                </p>
+              </div>
+              {roleSelection && (
+                <button
+                  type="button"
+                  onClick={changeRole}
+                  className="btn-base h-9 shrink-0 rounded-[8px] border border-rule-strong bg-panel px-3 text-[11px] font-medium text-ink hover:border-navy hover:text-navy"
+                >
+                  Change position
+                </button>
+              )}
             </div>
-            {document.warnings.map((warning, index) => <p key={`${warning.code}-${index}`} className="px-4 pt-3 text-[11px] text-warn">{warning.message}</p>)}
-            <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words p-4 text-[11px] leading-5 text-ink">{document.text}</pre>
-          </article>
-        ))}
-        <p className="text-[10px] text-warm">Preview data is held in this page’s memory and cleared when you leave or refresh.</p>
-        <button type="button" onClick={analyze} disabled={busy} className="btn-base h-[42px] rounded-[10px] bg-navy px-5 text-[13px] font-medium text-white hover:bg-navy-dark disabled:cursor-wait disabled:opacity-60">
-          {busy ? <><LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> Analyzing…</> : analysis ? "Analyze again" : "Analyze resume against this job"}
-        </button>
-      </div>}
-      {analysis && <section aria-labelledby="analysis-title" aria-live="polite" className="mt-8 space-y-5">
-        <div className="rounded-[12px] border border-rule bg-paper-2 p-5">
-          <p className="label-caps text-navy">JD evidence match</p>
-          <h3 id="analysis-title" className="mt-2 text-[18px] font-semibold text-ink">{analysis.jobMatch.score === null ? "Job match score unavailable" : `Job match score · ${analysis.jobMatch.score}/100`}</h3>
-          {analysis.jobMatch.scoreUnavailableReason && <p className="mt-2 max-w-[70ch] text-[12px] leading-5 text-warm">{analysis.jobMatch.scoreUnavailableReason}</p>}
+          )}
 
-          <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-            {[
-              ["Requirements evaluated", `${analysis.jobMatch.requirementCoverage.evaluatedRequirementCount}`],
-              ["Demonstrated or mentioned", `${demonstratedCount}`],
-              ["Missing or insufficient", `${gapFindings.length}`],
-              ["Unresolved", `${analysis.jobMatch.requirementCoverage.reviewRequiredCount}`],
-              ["Training outcomes excluded", `${learningOutcomes.length}`],
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-[9px] border border-rule bg-panel px-3 py-2">
-                <dt className="text-[10px] leading-4 text-warm">{label}</dt>
-                <dd className="mt-0.5 text-[16px] font-semibold text-ink">{value}</dd>
+          {result && roleSelection && !analysis && !isBusy && (
+            <RoleSelectionPanel
+              selection={roleSelection}
+              selectedId={selectedRoleId}
+              onSelect={setSelectedRoleId}
+              onAnalyze={() => analyze(selectedRoleId)}
+              onEditInputs={startEditing}
+              busy={isBusy}
+            />
+          )}
+
+          {error && (
+            <p
+              role="alert"
+              className="mt-4 flex items-start gap-2 rounded-[9px] border border-bad/30 bg-bad-wash/40 px-3 py-2.5 text-[11.5px] leading-5 text-bad"
+            >
+              <AlertCircle className="mt-[2px] h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {error}
+            </p>
+          )}
+
+          {result && editing && (
+            <div className="mt-4 rounded-[11px] border border-rule bg-paper-2/40 p-4 sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="label-caps">Replace inputs</p>
+                  <p className="mt-1.5 text-[11px] leading-5 text-warm">
+                    Changing a document or the pasted text clears the current extraction and
+                    analysis.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditing(false)}
+                  className="btn-base h-8 rounded-[8px] border border-rule-strong px-3 text-[11px] text-ink hover:border-navy hover:text-navy"
+                >
+                  Done
+                </button>
               </div>
-            ))}
-          </dl>
-          <p className="mt-3 text-[10px] leading-5 text-warm">
-            {analysis.jobMatch.requirementCoverage.candidateRequirementCount ?? analysis.jobMatch.requirementCoverage.evaluatedRequirementCount} candidate qualification statements identified
-            {totalStatements > 0 ? ` across ${totalStatements} analyzed statements` : ""}. {analysis.jobMatch.requirementCoverage.excludedStatementCount ?? 0} headings or informational statements were excluded from scoring.
-            These counts are detection results, not a confidence percentage or candidate rating.
-          </p>
-          <p className="mt-2 text-[10px] text-warm">Rubric {analysis.jobMatch.rubricVersion} · Engine {analysis.jobMatch.engineVersion}{analysis.jobMatch.interpretationVersion ? ` · Interpretation ${analysis.jobMatch.interpretationVersion}` : ""}. This summary describes resume evidence against this job description; it is not an ATS score, hiring prediction, or proficiency assessment.</p>
+              <div className="mt-4">
+                <IntakeFields
+                  resume={resumeFile}
+                  jdFile={jdFile}
+                  jdText={jdText}
+                  useJdFile={useJdFile}
+                  limits={inputLimits}
+                  busy={isBusy}
+                  onChooseFile={chooseFile}
+                  onClearFile={clearFile}
+                  onJdTextChange={changeJdText}
+                  onJdSourceChange={changeJdSource}
+                />
+              </div>
+            </div>
+          )}
+
+          {!analysis && (
+            <div className="mt-5 flex flex-wrap items-center gap-2.5 border-t border-rule pt-5">
+              {result && !roleSelection && (
+                <button
+                  type="button"
+                  onClick={() => analyze()}
+                  disabled={isBusy}
+                  className={PRIMARY_BUTTON}
+                >
+                  {busy === "analyze" ? (
+                    <>
+                      <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      Analyzing…
+                    </>
+                  ) : (
+                    "Analyze resume against this job"
+                  )}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={extract}
+                disabled={isBusy}
+                className={cn(result ? SECONDARY_BUTTON : PRIMARY_BUTTON)}
+              >
+                {busy === "extract" ? (
+                  <>
+                    <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    Extracting…
+                  </>
+                ) : result ? (
+                  "Extract again"
+                ) : (
+                  "Extract text for preview"
+                )}
+              </button>
+              {result && (
+                <button
+                  type="button"
+                  onClick={() => setPreviewOpen(true)}
+                  disabled={isBusy}
+                  className={GHOST_BUTTON}
+                >
+                  Review extracted text
+                </button>
+              )}
+            </div>
+          )}
+
+          {result && (
+            <p className="mt-4 text-[10px] leading-4 text-warm-2">
+              Documents and results are held in this page&apos;s memory, cleared on refresh, and
+              never saved by this analyzer.
+            </p>
+          )}
         </div>
+      </section>
 
-        {analysis.jobMatch.requirementCoverage.status === "partial" && <p role="status" className="rounded-[10px] border border-warn/40 bg-warn/5 px-4 py-3 text-[12px] leading-5 text-ink">
-          Some candidate-qualification statements could not be evaluated reliably. They are listed as unresolved below and are not assumed to be met or missing.
-        </p>}
+      {analysis && (
+        <div className="mt-6">
+          <AnalysisWorkspace
+            analysis={analysis}
+            activeView={view}
+            onViewChange={setView}
+            focusRequest={focusRequest}
+            onOpenEvidence={openEvidence}
+            copyState={visibleCopyState}
+            onCreateEvidenceCopy={() => void handoffToBuilder()}
+            onOpenEvidenceCopy={openCopyInBuilder}
+          />
+        </div>
+      )}
 
-        {highImpactGaps.length > 0 && <section aria-labelledby="priority-findings-title" className="rounded-[12px] border border-warn/40 bg-warn/5 p-5">
-          <h4 id="priority-findings-title" className="text-[14px] font-semibold text-ink">Most important qualification gaps</h4>
-          <p className="mt-2 text-[11px] leading-5 text-warm">Required statements with no clear evidence in this resume. A gap means the evidence was not found here, not that the capability is absent.</p>
-          <ul className="mt-3 space-y-3">
-            {highImpactGaps.map((finding) => <li key={finding.requirement.id} className="rounded-[9px] border border-rule bg-panel p-3">
-              <p className="text-[12px] font-semibold text-ink">{finding.requirement.displayName} <span className="font-normal text-warm">· {finding.requirement.priority} · {finding.evidence.classification.replaceAll("_", " ")}</span></p>
-              <p className="mt-1 text-[11px] leading-5 text-warm">{finding.evidence.explanation}</p>
-              {finding.requirement.sourceExcerpts[0] && <blockquote className="mt-2 border-l-2 border-navy/30 pl-3 text-[11px] italic text-warm">JD: {finding.requirement.sourceExcerpts[0]}</blockquote>}
-            </li>)}
-          </ul>
-        </section>}
-
-        {analysis.jobMatch.hardEligibilityConcerns.length > 0 && <section aria-labelledby="eligibility-title" className="rounded-[10px] border border-warn/40 bg-warn/5 p-4">
-          <h4 id="eligibility-title" className="text-[13px] font-semibold text-ink">Explicit eligibility requirements to review</h4>
-          <ul className="mt-3 space-y-3">{analysis.jobMatch.hardEligibilityConcerns.map((finding) => <li key={finding.requirement.id} className="text-[12px] text-ink"><strong>{finding.requirement.displayName}:</strong> {finding.evidence.explanation} {finding.requirement.sourceExcerpts[0] && <span className="text-warm">{finding.requirement.sourceExcerpts[0]}</span>}</li>)}</ul>
-        </section>}
-
-        <section aria-labelledby="unresolved-title" className="rounded-[12px] border border-rule bg-panel p-5">
-          <h4 id="unresolved-title" className="text-[14px] font-semibold text-ink">Unresolved candidate requirements</h4>
-          <p className="mt-2 text-[11px] leading-5 text-warm">
-            {analysis.jobMatch.requirementCoverage.unsupportedRequirementCount ?? 0} statement(s) outside the supported vocabulary and {analysis.jobMatch.requirementCoverage.ambiguousRequirementCount ?? 0} ambiguous statement(s).
-            These are candidate qualifications, not headings or training outcomes. They are not scored as met or missing.
-          </p>
-          {unresolvedItems.length === 0
-            ? <p className="mt-2 text-[11px] text-warm">No entry-qualification statement was left unresolved. This does not guarantee that every possible requirement was understood.</p>
-            : <div className="mt-3 space-y-2">{unresolvedGroups.map((group) => group.items.length > 0 && (
-              <details key={group.classification} className="rounded-[9px] border border-rule bg-paper">
-                <summary className="cursor-pointer px-3 py-2 text-[12px] font-semibold text-ink">
-                  {group.title} <span className="font-normal text-warm">({group.items.length})</span>
-                </summary>
-                <ul className="space-y-3 px-3 pb-3">
-                  {group.items.map((item) => <li key={item.id} className="rounded-[8px] border border-rule bg-panel p-3 text-[11px]">
-                    <p className="font-semibold text-ink">{PURPOSE_LABELS[item.purpose ?? "ENTRY_REQUIRED"]} · {item.priority}{item.concepts && item.concepts.length > 0 ? ` · ${item.concepts.join(", ")}` : ""}{item.hardEligibilityConcern ? " · possible mandatory qualification" : ""}</p>
-                    <p className="mt-1 leading-5 text-warm">{item.explanation}</p>
-                    {item.sectionHeading && <p className="mt-1 text-[10px] text-warm">Section: {item.sectionHeading}</p>}
-                    {item.sourceExcerpts.map((excerpt, index) => <blockquote key={`${item.id}-${index}`} className="mt-2 border-l-2 border-navy/30 pl-3 italic text-warm">JD: {excerpt}</blockquote>)}
-                  </li>)}
-                </ul>
-              </details>
-            ))}</div>}
-        </section>
-
-        <section aria-labelledby="detailed-evidence-title" className="space-y-2">
-          <h4 id="detailed-evidence-title" className="text-[14px] font-semibold text-ink">Requirements and resume evidence</h4>
-          <p className="text-[11px] leading-5 text-warm">Expand a requirement to see the exact job-description and resume text behind its classification.</p>
-          {findings.length === 0
-            ? <p className="rounded-[10px] border border-rule bg-panel p-4 text-[12px] text-warm">No requirements could be reliably extracted. Review the job description text and try again.</p>
-            : findings.map((finding) => <details key={finding.requirement.id} className="rounded-[10px] border border-rule bg-panel">
-              <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3">
-                <span className="text-[12px] font-semibold text-ink">{finding.requirement.displayName}{finding.requirement.purpose === "ROLE_RESPONSIBILITY" ? " (role context)" : ""}</span>
-                <span className={`rounded-full border px-2 py-1 text-[10px] capitalize ${EVIDENCE_BADGES[finding.evidence.classification] ?? "border-rule text-warm"}`}>{finding.requirement.priority} · {finding.evidence.classification.replaceAll("_", " ")}</span>
-              </summary>
-              <div className="border-t border-rule px-4 py-3">
-                <p className="text-[12px] leading-5 text-warm">{finding.evidence.explanation}</p>
-                {finding.requirement.sectionHeading && <p className="mt-2 text-[10px] text-warm">JD section: {finding.requirement.sectionHeading}</p>}
-                {finding.requirement.sourceExcerpts.map((excerpt, index) => <blockquote key={`jd-${index}`} className="mt-2 border-l-2 border-navy/30 pl-3 text-[11px] italic text-warm">JD: {excerpt}</blockquote>)}
-                {finding.evidence.excerpts.map((excerpt, index) => <blockquote key={`resume-${index}`} className="mt-2 border-l-2 border-good/40 pl-3 text-[11px] text-ink">Resume · {excerpt.section}: {excerpt.text}</blockquote>)}
-                {finding.requirement.purpose === "ROLE_RESPONSIBILITY" && <p className="mt-2 text-[10px] leading-5 text-warm">This comes from an assigned responsibility. It is kept for role context and is not counted as a pre-entry qualification gap.</p>}
-                {(finding.evidence.classification === "not_found" || finding.evidence.classification === "related" || finding.evidence.classification === "insufficient") && <p className="mt-2 text-[11px] leading-5 text-navy">{finding.suggestion}</p>}
-              </div>
-            </details>)}
-        </section>
-
-        {learningOutcomes.length > 0 && <details className="rounded-[12px] border border-rule bg-panel">
-          <summary className="cursor-pointer px-5 py-4 text-[13px] font-semibold text-ink">
-            Training and learning outcomes excluded from scoring <span className="font-normal text-warm">({learningOutcomes.length})</span>
-          </summary>
-          <div className="border-t border-rule px-5 py-4">
-            <p className="text-[11px] leading-5 text-warm">These statements describe what a program, role, or onboarding will teach. They are listed for transparency and are never treated as mandatory pre-entry skills.</p>
-            <ul className="mt-3 space-y-3">{learningOutcomes.map((outcome) => <li key={outcome.id} className="rounded-[9px] border border-rule bg-paper p-3">
-              <blockquote className="text-[11px] italic text-warm">JD: {outcome.excerpt}</blockquote>
-              {outcome.concepts.length > 0 && <p className="mt-1 text-[11px] text-ink">Recognized concepts: {outcome.concepts.join(", ")}</p>}
-              {outcome.sectionHeading && <p className="mt-1 text-[10px] text-warm">Section: {outcome.sectionHeading}</p>}
-            </li>)}</ul>
-          </div>
-        </details>}
-
-        <details className="rounded-[12px] border border-rule bg-panel">
-          <summary className="cursor-pointer px-5 py-4">
-            <span className="label-caps text-navy">Document inspection</span>
-            <span className="mt-1 block text-[17px] font-semibold text-ink">ATS Readability Assessment</span>
-            <span className="mt-1 block text-[11px] text-warm">Expand for parser-supported findings, checks not performed, and why no numeric ATS score is provided.</span>
-          </summary>
-          <div className="border-t border-rule p-5">
-            <p className="text-[12px] text-ink">{analysis.atsReadability.qualitativeSummary === "text_extracted" ? "Readable text was extracted; this does not confirm visual layout or ATS compatibility." : analysis.atsReadability.qualitativeSummary === "text_extracted_with_findings" ? "Text was extracted with document inspection findings to review." : "There is not enough extracted text to assess readability."}</p>
-            <p className="mt-2 text-[11px] text-warm">Inspection coverage: {analysis.atsReadability.coveragePercent}% · {analysis.atsReadability.status} inspection · rubric {analysis.atsReadability.rubricVersion}. Coverage describes available parser checks, not document quality.</p>
-            <p role="status" className="mt-2 text-[11px] text-warn">No numeric ATS score is provided. {analysis.atsReadability.scoreUnavailableReason}</p>
-            <p className="mt-2 text-[11px] text-warm">This platform-defined assessment is not an official employer ATS score or a hiring prediction.</p>
-            {renderAtsChecks("Confirmed extraction findings", ["issue"])}
-            {renderAtsChecks("Warnings to review", ["warning"])}
-            {renderAtsChecks("Checks not performed", ["not_evaluated"])}
-            {renderAtsChecks("Checks completed without a finding", ["passed"])}
-            <ul className="mt-4 list-disc space-y-1 pl-5 text-[10px] leading-5 text-warm">{analysis.atsReadability.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul>
-          </div>
-        </details>
-
-        <ul className="list-disc space-y-1 pl-5 text-[10px] leading-5 text-warm">{analysis.jobMatch.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul>
-        <p className="text-[10px] text-warm">Analysis is not saved and is cleared when you leave or refresh.</p>
-      </section>}
-    </section>
+      {previewOpen && result && (
+        <ExtractedTextDrawer result={result} onClose={() => setPreviewOpen(false)} />
+      )}
+    </>
   );
 }

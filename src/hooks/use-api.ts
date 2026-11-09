@@ -13,7 +13,10 @@ import type {
   DashboardPayload,
   NotificationRecord,
   ProjectRecord,
+  ResumeLibraryDetail,
+  ResumeLibraryRecord,
   ResumeRecord,
+  ResumeVersionSummary,
   RoadmapTask,
   SessionRecord,
   SkillRecord,
@@ -156,5 +159,104 @@ export function useUpdateProfile() {
       queryClient.setQueryData(["profile"], data);
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
+  });
+}
+
+/**
+ * RES-003A private resume library (/resumes/library). Every query and
+ * mutation is authenticated; ownership is decided server-side from the
+ * access token — the client never sends a user id. Saves carry the
+ * `expectedRevision` the tab loaded, so a second tab saving the same resume
+ * gets a 409 RESUME_EDIT_CONFLICT instead of silently overwriting.
+ */
+const LIBRARY_KEY = ["resume-library"] as const;
+const libraryKeys = {
+  all: LIBRARY_KEY,
+  detail: (id: string) => [...LIBRARY_KEY, id] as const,
+  versions: (id: string) => [...LIBRARY_KEY, id, "versions"] as const,
+};
+
+export function useResumeLibrary() {
+  return useQuery({
+    queryKey: libraryKeys.all,
+    queryFn: () => requestData<ResumeLibraryRecord[]>("/resumes/library"),
+  });
+}
+
+export function useResumeLibraryDetail(id: string | null) {
+  return useQuery({
+    queryKey: libraryKeys.detail(id ?? "none"),
+    queryFn: () => requestData<ResumeLibraryDetail>(`/resumes/library/${id}`),
+    enabled: Boolean(id),
+  });
+}
+
+export function useResumeVersions(id: string | null) {
+  return useQuery({
+    queryKey: libraryKeys.versions(id ?? "none"),
+    queryFn: () => requestData<ResumeVersionSummary[]>(`/resumes/library/${id}/versions`),
+    enabled: Boolean(id),
+  });
+}
+
+function invalidateLibrary(queryClient: ReturnType<typeof useQueryClient>, id?: string) {
+  queryClient.invalidateQueries({ queryKey: libraryKeys.all });
+  if (id) {
+    queryClient.invalidateQueries({ queryKey: libraryKeys.detail(id) });
+    queryClient.invalidateQueries({ queryKey: libraryKeys.versions(id) });
+  }
+}
+
+export function useCreateResumeLibrary() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { name: string; targetRoleLabel?: string; content: unknown }) =>
+      requestPost<ResumeLibraryDetail>("/resumes/library", payload),
+    onSuccess: (data) => invalidateLibrary(queryClient, data.id),
+  });
+}
+
+export function useSaveResumeVersion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      id: string;
+      expectedRevision: number;
+      targetRoleLabel?: string;
+      content: unknown;
+    }) =>
+      requestPost<ResumeLibraryDetail>(`/resumes/library/${input.id}/versions`, {
+        expectedRevision: input.expectedRevision,
+        ...(input.targetRoleLabel ? { targetRoleLabel: input.targetRoleLabel } : {}),
+        content: input.content,
+      }),
+    onSuccess: (_data, variables) => invalidateLibrary(queryClient, variables.id),
+  });
+}
+
+export function useRenameResumeLibrary() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; name: string }) =>
+      requestPatch<ResumeLibraryRecord>(`/resumes/library/${input.id}`, { name: input.name }),
+    onSuccess: (_data, variables) => invalidateLibrary(queryClient, variables.id),
+  });
+}
+
+export function useDuplicateResumeLibrary() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; name?: string; targetRoleLabel?: string }) =>
+      requestPost<ResumeLibraryDetail>(`/resumes/library/${input.id}/duplicate`, input),
+    onSuccess: (data) => invalidateLibrary(queryClient, data.id),
+  });
+}
+
+export function useDeleteResumeLibrary() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      requestDelete<{ removedId: string; name: string }>(`/resumes/library/${id}`),
+    onSuccess: () => invalidateLibrary(queryClient),
   });
 }

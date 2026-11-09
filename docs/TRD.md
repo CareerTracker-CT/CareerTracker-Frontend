@@ -87,6 +87,17 @@
 
 > **Pipeline Guarantee:** Each stage in the pipeline must be independently retryable, observable, and isolated from downstream failures.
 
+### 6.1 Deterministic JD Role Segmentation and Safe Scoring (RES-002D-B, RES-002D-C)
+
+- **Problem:** one notice can advertise several positions. Treating it as one requirement set mixes unrelated qualifications and produces a misleading aggregate score.
+- **Detection:** `matching/job-description-roles.ts` scans the already-extracted JD (≤100,000 characters) with a bounded, deterministic rule set: explicit position markers, numbered headings, pipe/tab vacancy rows, position lists, and structurally supported role-title lines. A closed abbreviation list covers SDE/SDET/QA/SRE and related titles. Expanded/abbreviated forms and roman/numeric levels are canonicalized only for duplicate detection, so `SDE-I` and `Software Development Engineer I` are one position while SDE-I and SDE-II remain distinct. Training modules, department/project names, locations, career ladders, company copy and selection-process sections are rejected.
+- **Structural uncertainty:** `possible_multiple` means the document announces/lists more than one position but fewer than two reliable boundaries exist; `unreliable_boundaries` means multiple headings exist but at least one block has no qualification evidence. A single unfamiliar title or acronym does not trigger either state.
+- **Explicit selection:** zero or one detected position keeps the existing whole-document flow, with `roleScope.positionStatus` distinguishing `identified` from `no_title`. Two or more confident positions, or unresolved boundaries, return a typed selection state and `jobMatch: null`; the client must choose one supported position. In `possible_multiple`, no role is selectable and the UI asks for a one-position description. In `unreliable_boundaries`, only high-confidence blocks are selectable. No position is chosen automatically and no aggregate score is produced.
+- **Server authority:** role identity is a SHA-256 token bound to the normalized JD, role index, title and source offsets. The backend recomputes detection and rejects stale, forged, truncated or mismatched tokens. A token for an unselectable boundary returns `400 ROLE_BOUNDARIES_UNRESOLVED` and the analysis service is not called. No selected role, source range or score is trusted from the client.
+- **Scoped matching:** requirement extraction, coverage review, learning outcomes, statement counts and the score denominator are limited to the selected role's block plus statements explicitly marked for all positions. Priorities merge only inside that scope. The role heading itself is never a qualification.
+- **Frontend:** a compact, keyboard-accessible radio panel inside the existing RES-UX-001 workspace; selected role is shown above the tabs; changing it clears the score but keeps the uploaded files. Unresolved documents show no radios and a neutral “provide a one-position description” action. Unsupported sections remain visible but are not selectable. No persistence and no second analysis engine.
+- **Privacy:** all detection and matching are in-memory, deterministic and provider-free; no JD/resume content is logged or stored, and no schema or authentication contract changes.
+
 ---
 
 ## 7. API Endpoints Contract Overview
