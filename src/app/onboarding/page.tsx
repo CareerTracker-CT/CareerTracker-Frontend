@@ -18,6 +18,8 @@ import {
 import { Wordmark } from "@/components/brand/logo";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
+import type { ApiResponse } from "@/types";
 
 const steps = [
   {
@@ -104,10 +106,70 @@ export default function OnboardingPage() {
     learningStyle: "Project-first, then documentation",
     studyTime: "2–3 hours per day",
   });
+  // Free-text fields from the wizard steps, persisted with PUT /profile.
+  const [college, setCollege] = useState("Vellore Institute of Technology");
+  const [branch, setBranch] = useState("Computer Science & Engineering");
+  const [cgpa, setCgpa] = useState("8.7");
+  const [company, setCompany] = useState("Atlassian");
+  const [stack, setStack] = useState<string[]>([
+    "TypeScript",
+    "Go",
+    "Python",
+    "Java",
+    "PostgreSQL",
+  ]);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const set = (key: string, value: string) => setSelections((s) => ({ ...s, [key]: value }));
   const current = steps[step];
   const progress = ((step + 1) / steps.length) * 100;
+
+  /** Persists the wizard into the profile, then lands on the dashboard. */
+  const finishOnboarding = async () => {
+    setSaveError(null);
+    setSaving(true);
+    try {
+      const cgpaNumber = Number.parseFloat(cgpa);
+      const studyHours: Record<string, number> = {
+        "Less than 1 hour per day": 1,
+        "1–2 hours per day": 1.5,
+        "2–3 hours per day": 2.5,
+        "3–4 hours per day": 3.5,
+        "More than 4 hours per day": 5,
+        "Weekends only": 3,
+      };
+      const timelineMonths: Record<string, number> = {
+        "Within 3 months": 3,
+        "5 months": 5,
+        "6–9 months": 8,
+        "Next year": 12,
+      };
+
+      await api.put<ApiResponse<unknown>>("/profile", {
+        college: college.trim() || undefined,
+        degree: selections.degree,
+        branch: branch.trim() || undefined,
+        academicYear: selections.year,
+        cgpa: Number.isFinite(cgpaNumber) ? cgpaNumber : undefined,
+        targetRole: selections.targetRole,
+        targetCompany: company.trim() || undefined,
+        preferredStack: stack,
+        learningStyle: selections.learningStyle,
+        studyHoursPerDay: studyHours[selections.studyTime],
+        placementTimelineMonths:
+          timelineMonths[selections.timeline] ?? undefined,
+      });
+
+      router.push("/dashboard");
+    } catch {
+      setSaveError(
+        "Your preferences couldn't be saved just now. The workspace still works — you can retry from your profile settings.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-paper">
@@ -210,7 +272,8 @@ export default function OnboardingPage() {
                         </label>
                         <input
                           id="college"
-                          defaultValue="Vellore Institute of Technology"
+                          value={college}
+                          onChange={(e) => setCollege(e.target.value)}
                           className="field"
                           placeholder="Start typing your institution…"
                         />
@@ -223,7 +286,8 @@ export default function OnboardingPage() {
                           </label>
                           <input
                             id="branch"
-                            defaultValue="Computer Science & Engineering"
+                            value={branch}
+                            onChange={(e) => setBranch(e.target.value)}
                             className="field"
                           />
                         </div>
@@ -231,7 +295,16 @@ export default function OnboardingPage() {
                           <label htmlFor="cgpa" className="label-caps mb-3.5 block">
                             CGPA (out of 10)
                           </label>
-                          <input id="cgpa" type="number" step="0.01" defaultValue="8.7" className="field" />
+                          <input
+                            id="cgpa"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="10"
+                            value={cgpa}
+                            onChange={(e) => setCgpa(e.target.value)}
+                            className="field"
+                          />
                         </div>
                       </div>
                     </div>
@@ -266,7 +339,8 @@ export default function OnboardingPage() {
                         </label>
                         <input
                           id="company"
-                          defaultValue="Atlassian"
+                          value={company}
+                          onChange={(e) => setCompany(e.target.value)}
                           className="field"
                           placeholder="Where would you love to work?"
                         />
@@ -276,38 +350,50 @@ export default function OnboardingPage() {
                         </p>
                       </div>
 
-                      <div>
-                        <p className="label-caps mb-3.5">Preferred technologies</p>
-                        <div className="flex flex-wrap gap-2">
-                          {[
-                            "TypeScript",
-                            "Go",
-                            "Python",
-                            "Java",
-                            "PostgreSQL",
-                            "Redis",
-                            "Docker",
-                            "React",
-                            "Node.js",
-                            "Kafka",
-                            "AWS",
-                          ].map((tech, i) => (
-                            <button
-                              key={tech}
-                              type="button"
-                              className={cn(
-                                "rounded-full border px-3.5 py-1.5 text-[10px] font-medium transition-colors",
-                                i < 5
-                                  ? "border-navy bg-navy text-white"
-                                  : "border-rule text-warm hover:border-navy/45 hover:text-ink",
-                              )}
-                              aria-pressed={i < 5}
-                            >
-                              {tech}
-                            </button>
-                          ))}
+                        <div>
+                          <p className="label-caps mb-3.5">Preferred technologies</p>
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              "TypeScript",
+                              "Go",
+                              "Python",
+                              "Java",
+                              "PostgreSQL",
+                              "Redis",
+                              "Docker",
+                              "React",
+                              "Node.js",
+                              "Kafka",
+                              "AWS",
+                            ].map((tech) => {
+                              const active = stack.includes(tech);
+                              return (
+                                <button
+                                  key={tech}
+                                  type="button"
+                                  onClick={() =>
+                                    setStack((current) =>
+                                      active
+                                        ? current.filter((t) => t !== tech)
+                                        : current.length < 20
+                                          ? [...current, tech]
+                                          : current,
+                                    )
+                                  }
+                                  className={cn(
+                                    "rounded-full border px-3.5 py-1.5 text-[10px] font-medium transition-colors",
+                                    active
+                                      ? "border-navy bg-navy text-white"
+                                      : "border-rule text-warm hover:border-navy/45 hover:text-ink",
+                                  )}
+                                  aria-pressed={active}
+                                >
+                                  {tech}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
                     </div>
                   )}
 
@@ -460,12 +546,18 @@ export default function OnboardingPage() {
 
                         <button
                           type="button"
-                          onClick={() => router.push("/dashboard")}
-                          className="btn-base mt-7 h-[46px] w-full rounded-[10px] bg-navy text-[13.5px] font-medium text-white hover:bg-navy-dark dark:bg-navy dark:text-[#0d1117]"
+                          onClick={finishOnboarding}
+                          disabled={saving}
+                          className="btn-base mt-7 h-[46px] w-full rounded-[10px] bg-navy text-[13.5px] font-medium text-white hover:bg-navy-dark disabled:cursor-not-allowed disabled:opacity-60 dark:bg-navy dark:text-[#0d1117]"
                         >
-                          Go to my dashboard
+                          {saving ? "Saving your preferences…" : "Go to my dashboard"}
                           <ArrowRight className="h-[15px] w-[15px]" aria-hidden="true" />
                         </button>
+                        {saveError && (
+                          <p role="alert" className="mt-3 text-[11px] leading-[1.6] text-bad">
+                            {saveError}
+                          </p>
+                        )}
                       </div>
 
                       <div className="grid gap-3 sm:grid-cols-3">

@@ -11,17 +11,29 @@ function readString(value) {
 export function describeLoginError(error) {
   const value = error && typeof error === "object" ? error : {};
   const code = readString(value.code);
+  const message = readString(value.message);
   const response = value.response && typeof value.response === "object"
     ? value.response
     : {};
   const status = Number(response.status);
   const serverCode = readString(response.data?.error?.code).toUpperCase();
 
+  // Errors assembled by the auth helper already carry final, user-safe copy
+  // (e.g. the login-conflict guidance). Render it verbatim.
+  if (value.handled === true && message) {
+    return message;
+  }
+
   if (code === "auth/popup-closed-by-user") {
-    return "Google sign-in was cancelled.";
+    return "Sign-in was cancelled.";
   }
   if (code === "auth/popup-blocked" || code === "auth/cancelled-popup-request") {
-    return "Google sign-in could not open. Please try again.";
+    return "Pop-up sign-in could not open. Please try again.";
+  }
+  // Firebase raised this when the popup succeeded but the same email is
+  // already bound to another sign-in method (e.g. Google or password).
+  if (code === "auth/account-exists-with-different-credential") {
+    return "That email is already registered with a different sign-in method. Sign in with that method instead.";
   }
 
   if ([
@@ -44,6 +56,13 @@ export function describeLoginError(error) {
   }
   if (status === 401) {
     return CREDENTIALS_MESSAGE;
+  }
+  // CareerTracker 403s carry deliberate user-safe copy — notably the
+  // "sign-in provider shares no verified email" guidance shown to a Firebase
+  // identity (e.g. GitHub private email) that cannot be provisioned safely.
+  if (status === 403) {
+    const serverMessage = readString(response.data?.error?.message);
+    return serverMessage || SERVICE_MESSAGE;
   }
   if (code === "auth/too-many-requests" || status === 429) {
     return "Too many sign-in attempts. Please wait a moment and try again.";

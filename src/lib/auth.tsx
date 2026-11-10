@@ -10,6 +10,7 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, refreshSession, setAccessToken } from "@/lib/api";
+import { clearFirebaseIdentity } from "@/lib/firebase/client";
 import type { UserProfile } from "@/types";
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
@@ -130,6 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Server unreachable or fully expired session — drop the local state.
     } finally {
+      clearFirebaseIdentity();
       clearSession();
       queryClient.clear();
       router.replace("/login");

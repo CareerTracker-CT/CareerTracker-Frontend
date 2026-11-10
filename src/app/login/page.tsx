@@ -12,8 +12,12 @@ import Image from "next/image";
 import { Wordmark } from "@/components/brand/logo";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
+  resendFirebaseVerificationEmail,
+  registerWithFirebaseEmail,
   signInWithFirebaseEmail,
+  signInWithFirebaseGitHub,
   signInWithFirebaseGoogle,
 } from "@/lib/firebase/client";
 import { api } from "@/lib/api";
@@ -22,10 +26,22 @@ import { useAuth } from "@/lib/auth";
 import type { ApiResponse } from "@/types";
 
 const loginSchema = z.object({
+  // Required with Create account; validated conditionally in onSubmit for
+  // sign-in mode where it isn't collected.
+  fullName: z.string().optional(),
   email: z.string().min(1, "Email is required.").email("Enter a valid email address."),
   password: z.string().min(1, "Password is required.").min(8, "Password must be at least 8 characters."),
   rememberMe: z.boolean().default(false),
 });
+
+/** Strength rules mirror the backend's assumed password policy. */
+function passwordIssues(password: string): string[] {
+  const issues: string[] = [];
+  if (!/[A-Z]/.test(password)) issues.push("uppercase letter");
+  if (!/[0-9]/.test(password)) issues.push("number");
+  if (!/[^A-Za-z0-9]/.test(password)) issues.push("symbol");
+  return issues;
+}
 
 type LoginForm = z.input<typeof loginSchema>;
 
@@ -83,6 +99,20 @@ export default function LoginPage() {
   const { status, signIn } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  // Register-mode success state: the account exists, only the email has to be
+  // verified before the sign-in exchange can succeed.
+  const [pendingVerification, setPendingVerification] = useState<string | null>(
+    null,
+  );
+  // Mode toggle — both flows share the same fields; the name field appears
+  // only when creating an account.
+  const [mode, setMode] = useState<"signin" | "register">("signin");
+  // Shared busy guard: at most one authentication attempt (email, register,
+  // Google or GitHub) can be in flight, so no flow can open two popups or
+  // double-post.
+  const [activeFlow, setActiveFlow] = useState<null | "google" | "github">(
+    null,
+  );
 
   // Already signed in? Skip the form.
   useEffect(() => {
@@ -103,6 +133,8 @@ export default function LoginPage() {
       rememberMe: true,
     },
   });
+  const oauthBusy = activeFlow !== null || isSubmitting;
+  const passwordIssueList = passwordIssues(getValues("password") ?? "");
 
   const exchangeFirebaseToken = async (idToken: string, rememberMe: boolean) => {
     const { data } = await api.post<ApiResponse<{ accessToken: string }>>(
@@ -117,11 +149,38 @@ export default function LoginPage() {
     // The token lives in memory; the httpOnly cookies set by this response are
     // the persistent session. The profile is loaded in the background.
     await signIn(data.data.accessToken);
-    router.push("/dashboard");
+    router.push("/onboarding");
   };
 
   const onSubmit = async (values: LoginForm) => {
     setFormError(null);
+
+    if (mode === "register") {
+      const fullName = values.fullName?.trim() ?? "";
+      if (fullName.length < 2 || fullName.length > 120) {
+        setFormError("Please enter your full name.");
+        return;
+      }
+      const unresolved = passwordIssues(values.password ?? "");
+      if (unresolved.length > 0) {
+        setFormError(
+          `Password needs at least one ${unresolved.join(", one ")}.`,
+        );
+        return;
+      }
+      try {
+        const { email } = await registerWithFirebaseEmail(
+          fullName,
+          values.email,
+          values.password,
+        );
+        setPendingVerification(email);
+      } catch (error) {
+        setFormError(describeLoginError(error));
+      }
+      return;
+    }
+
     try {
       // Firebase proves the user's identity for the login attempt only. The
       // backend then verifies the ID token and issues the same application
@@ -133,15 +192,43 @@ export default function LoginPage() {
     }
   };
 
-  const onGoogleSignIn = async () => {
+  const onResendVerification = async () => {
+    const email = pendingVerification;
+    if (!email) return;
     setFormError(null);
     try {
-      const idToken = await signInWithFirebaseGoogle();
-      await exchangeFirebaseToken(idToken, getValues("rememberMe") ?? false);
+      await resendFirebaseVerificationEmail();
+      setPendingVerification(`${email}·resent`);
     } catch (error) {
       setFormError(describeLoginError(error));
     }
   };
+
+  /** Shared OAuth popup flow: proves identity with Firebase, then exchanges
+   * the ID token for the application session exactly like email sign-in. */
+  const runOauthSignIn = async (
+    flow: "google" | "github",
+    signInWithProvider: () => Promise<string>,
+    rememberMe: boolean,
+  ) => {
+    if (activeFlow) return; // one popup at a time
+    setFormError(null);
+    setActiveFlow(flow);
+    try {
+      const idToken = await signInWithProvider();
+      await exchangeFirebaseToken(idToken, rememberMe);
+    } catch (error) {
+      setFormError(describeLoginError(error));
+    } finally {
+      setActiveFlow(null);
+    }
+  };
+
+  const onGoogleSignIn = () =>
+    runOauthSignIn("google", signInWithFirebaseGoogle, getValues("rememberMe") ?? false);
+
+  const onGitHubSignIn = () =>
+    runOauthSignIn("github", signInWithFirebaseGitHub, getValues("rememberMe") ?? false);
 
   return (
     <div className="min-h-screen bg-paper lg:grid lg:grid-cols-[1.05fr_1fr]">
@@ -259,12 +346,16 @@ export default function LoginPage() {
               <Wordmark monogramSize={28} />
             </div>
 
-            <p className="label-caps mt-10 lg:mt-0">Sign in</p>
+            <p className="label-caps mt-10 lg:mt-0">
+              {mode === "register" ? "Create account" : "Sign in"}
+            </p>
             <h2 className="mt-4 text-[30px] font-semibold leading-[1.16] tracking-[-0.03em] text-ink">
-              Continue to CareerTracker
+              {mode === "register" ? "Start your CareerTracker" : "Continue to CareerTracker"}
             </h2>
             <p className="mt-2.5 text-[14px] leading-[1.66] text-warm">
-              Use your student credentials, or explore the demo workspace.
+              {mode === "register"
+                ? "Prove your email once — the verification link unlocks sign-in."
+                : "Use your student credentials, or explore the demo workspace."}
             </p>
 
             {/* OAuth */}
@@ -272,7 +363,8 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={onGoogleSignIn}
-                className="btn-base h-[44px] rounded-[10px] border border-rule-strong bg-panel text-[13.5px] font-medium text-ink hover:border-navy hover:text-navy"
+                disabled={oauthBusy}
+                className="btn-base h-[44px] rounded-[10px] border border-rule-strong bg-panel text-[13.5px] font-medium text-ink hover:border-navy hover:text-navy disabled:cursor-not-allowed disabled:opacity-55"
               >
                 <svg viewBox="0 0 24 24" className="h-[17px] w-[17px]" aria-hidden="true">
                   <path
@@ -292,16 +384,18 @@ export default function LoginPage() {
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.05l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                   />
                 </svg>
-                Google
+                {activeFlow === "google" ? "Signing in…" : "Google"}
               </button>
               <button
                 type="button"
-                className="btn-base h-[44px] rounded-[10px] border border-rule-strong bg-panel text-[13.5px] font-medium text-ink hover:border-navy hover:text-navy"
+                onClick={onGitHubSignIn}
+                disabled={oauthBusy}
+                className="btn-base h-[44px] rounded-[10px] border border-rule-strong bg-panel text-[13.5px] font-medium text-ink hover:border-navy hover:text-navy disabled:cursor-not-allowed disabled:opacity-55"
               >
                 <svg viewBox="0 0 24 24" className="h-[17px] w-[17px]" fill="currentColor" aria-hidden="true">
                   <path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.2 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5.99.11-.78.42-1.3.76-1.6-2.66-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.11-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.65 1.66.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.22 0 4.61-2.81 5.62-5.49 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12 12 0 0 0 24 12.5C24 5.87 18.63.5 12 .5z" />
                 </svg>
-                GitHub
+                {activeFlow === "github" ? "Signing in…" : "GitHub"}
               </button>
             </div>
 
@@ -311,7 +405,67 @@ export default function LoginPage() {
               <span className="h-px flex-1 bg-rule" aria-hidden="true" />
             </div>
 
+            {/* Mode toggle: Sign in | Create account (same page, same fields) */}
+            <div className="mb-6 grid grid-cols-2 gap-px overflow-hidden rounded-[10px] border border-rule-strong bg-rule-strong">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("signin");
+                  setFormError(null);
+                  setPendingVerification(null);
+                }}
+                aria-pressed={mode === "signin"}
+                className={cn(
+                  "h-[40px] text-[12.5px] font-medium transition-colors",
+                  mode === "signin"
+                    ? "bg-navy text-white"
+                    : "bg-panel text-ink-soft hover:text-navy",
+                )}
+              >
+                Sign in
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("register");
+                  setFormError(null);
+                  setPendingVerification(null);
+                }}
+                aria-pressed={mode === "register"}
+                className={cn(
+                  "h-[40px] text-[12.5px] font-medium transition-colors",
+                  mode === "register"
+                    ? "bg-navy text-white"
+                    : "bg-panel text-ink-soft hover:text-navy",
+                )}
+              >
+                Create account
+              </button>
+            </div>
+
             <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
+              {mode === "register" && (
+                <div>
+                  <label htmlFor="fullName" className="mb-2 block text-[12.5px] font-medium text-ink">
+                    Full name
+                  </label>
+                  <input
+                    id="fullName"
+                    type="text"
+                    autoComplete="name"
+                    placeholder="Aarav Sharma"
+                    className="field"
+                    aria-invalid={errors.fullName ? "true" : undefined}
+                    {...register("fullName")}
+                  />
+                  {errors.fullName && (
+                    <p role="alert" className="mt-2 text-[11.5px] text-bad">
+                      {errors.fullName.message}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label htmlFor="email" className="mb-2 block text-[12.5px] font-medium text-ink">
                   Email address
@@ -338,12 +492,14 @@ export default function LoginPage() {
                   <label htmlFor="password" className="text-[12.5px] font-medium text-ink">
                     Password
                   </label>
-                  <Link
-                    href="#"
-                    className="text-[11.5px] font-medium text-navy underline-offset-4 hover:underline"
-                  >
-                    Forgot password?
-                  </Link>
+                  {mode === "signin" && (
+                    <Link
+                      href="#"
+                      className="text-[11.5px] font-medium text-navy underline-offset-4 hover:underline"
+                    >
+                      Forgot password?
+                    </Link>
+                  )}
                 </div>
                 <div className="relative">
                   <input
@@ -375,6 +531,11 @@ export default function LoginPage() {
                     {errors.password.message}
                   </p>
                 )}
+                {mode === "register" && passwordIssueList.length > 0 && (
+                  <p className="mt-2 text-[11px] text-warm">
+                    Also needs: {passwordIssueList.join(", ")}. Minimum 8 characters.
+                  </p>
+                )}
               </div>
 
               <label className="flex cursor-pointer items-center gap-2.5 text-[12.5px] text-ink-soft">
@@ -395,16 +556,48 @@ export default function LoginPage() {
                 </div>
               )}
 
+              {pendingVerification && (
+                <div
+                  role="status"
+                  className="flex items-start gap-3 rounded-[10px] border border-good/30 bg-good-wash/70 px-4 py-3"
+                >
+                  <Check className="mt-[2px] h-[15px] w-[15px] shrink-0 text-good" aria-hidden="true" />
+                  <div>
+                    <p className="text-[12px] font-medium text-ink">
+                      Check your inbox — verify, then press Sign in.
+                    </p>
+                    <p className="mt-1 text-[11px] leading-[1.6] text-warm">
+                      A verification link was sent by Firebase email
+                      authentication. Until your address is verified the sign-in
+                      can&apos;t complete. Didn&apos;t get it?{" "}
+                      <button
+                        type="button"
+                        onClick={onResendVerification}
+                        className="font-medium text-navy underline-offset-4 hover:underline"
+                      >
+                        Send again
+                      </button>
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <Button
                 type="submit"
                 size="lg"
                 className="w-full"
                 loading={isSubmitting}
-                loadingText="Signing you in…"
+                loadingText={
+                  mode === "register" ? "Creating your account…" : "Signing you in…"
+                }
                 disabled={!isValid}
-                iconRight={!isSubmitting ? <ArrowRight className="h-[16px] w-[16px]" /> : undefined}
+                iconRight={
+                  !isSubmitting ? (
+                    <ArrowRight className="h-[16px] w-[16px]" />
+                  ) : undefined
+                }
               >
-                Sign in
+                {mode === "register" ? "Create account" : "Sign in"}
               </Button>
             </form>
 
@@ -419,10 +612,18 @@ export default function LoginPage() {
             </div>
 
             <p className="mt-8 text-[12.5px] text-warm">
-              New to CareerTracker?{" "}
-              <Link href="/onboarding" className="font-medium text-navy underline-offset-4 hover:underline">
-                Create an account
-              </Link>
+              {mode === "register"
+                ? "Already have an account? "
+                : "New to CareerTracker? "}
+              <button
+                type="button"
+                onClick={() =>
+                  setMode(mode === "register" ? "signin" : "register")
+                }
+                className="font-medium text-navy underline-offset-4 hover:underline"
+              >
+                {mode === "register" ? "Sign in instead" : "Create an account"}
+              </button>
             </p>
           </motion.div>
         </div>
