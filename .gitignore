@@ -12,3 +12,4 @@ node_modules/
 .next/
 out/
 coverage/
+tsconfig.tsbuildinfo
